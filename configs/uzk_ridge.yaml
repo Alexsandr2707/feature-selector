@@ -1,0 +1,46 @@
+data:
+  features_path: ../datasets/uzk/uzk.csv
+  target_path: ../datasets/uzk/uzk_lab.csv
+  target_column: UZK.Q.81AY00108.FINALPOINT
+  freq: 1h
+split:
+  train_fraction: 0.6
+  validation_fraction: 0.2
+pipeline:
+- name: exclusions
+  type: exclude_intervals
+  params:
+    intervals:
+    - - '2022-10-01 00:00:00'
+      - '2022-10-16 23:00:00'
+    - - '2023-09-20 00:00:00'
+      - '2023-12-31 23:00:00'
+- name: scaler
+  type: standard
+- name: selector
+  type: static
+  params:
+    columns:
+    - 81TI10143
+    - 81TI10126
+    - 81FIL30066
+    - 81LILH40012
+    - 81TIH11209
+    - 81FCL30063
+    - 81FI30052
+    - 81TI10123
+- name: future_target
+  type: align_target
+  params:
+    horizon: 1
+- name: windows
+  type: windows
+  params:
+    lookback: 12
+- name: model
+  type: ridge
+  params:
+    alpha: 10.0
+run:
+  seed: 0
+  output_dir: ../runs

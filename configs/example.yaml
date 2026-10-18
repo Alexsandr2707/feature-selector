@@ -1,0 +1,25 @@
+data:
+  features_path: ../data/features.csv
+  target_path: ../data/target.csv
+  target_column: target
+  freq: 1h
+split:
+  train_fraction: 0.6
+  validation_fraction: 0.2
+pipeline:
+- name: scale
+  type: standard
+- name: future_target
+  type: align_target
+  params:
+    horizon: 1
+- name: windows
+  type: windows
+  params:
+    lookback: 24
+- name: model
+  type: ridge
+  params:
+    alpha: 1.0
+run:
+  output_dir: ../runs

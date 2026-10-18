@@ -1,0 +1,31 @@
+data:
+  features_path: ../datasets/dataset1/features.csv
+  target_path: ../datasets/dataset1/target.csv
+  target_column: 35_21_1000.Q.KatKlD.1444.octanI
+  freq: 1h
+split:
+  train_fraction: 0.6
+  validation_fraction: 0.2
+pipeline:
+- name: scaler
+  type: standard
+- name: future_target
+  type: align_target
+  params:
+    horizon: 1
+- name: windows
+  type: windows
+  params:
+    lookback: 48
+- name: target_scaler
+  type: target_scale
+  params:
+    scaler:
+      type: standard
+- name: model
+  type: ridge
+  params:
+    alpha: 10.0
+run:
+  seed: 0
+  output_dir: ../runs

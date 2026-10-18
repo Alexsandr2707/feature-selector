@@ -1,0 +1,36 @@
+# Python environments and generated files
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local datasets and experiment artifacts
+/data/
+/datasets/
+/runs/
+/tmp/
+/scripts/
+
+
+# Local notebooks and configuration
+.ipynb_checkpoints/
+*.ipynb
+.env
+.env.*
+!.env.example
+/.agents/
+/.codex/
+/.aws/
+.DS_Store
+
+# AGENT files
+AGENTS.md
+PLAN.md

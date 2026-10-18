@@ -1,0 +1,55 @@
+data:
+  features_path: ../datasets/uzk/uzk.csv
+  target_path: ../datasets/uzk/uzk_lab.csv
+  target_column: UZK.Q.81AY00108.FINALPOINT
+  freq: 1h
+split:
+  train_fraction: 0.6
+  validation_fraction: 0.2
+pipeline:
+- name: exclusions
+  type: exclude_intervals
+  params:
+    intervals:
+    - - '2022-10-01 00:00:00'
+      - '2022-10-16 23:00:00'
+    - - '2023-09-20 00:00:00'
+      - '2023-12-31 23:00:00'
+- name: scaler
+  type: standard
+- name: future_target
+  type: align_target
+  params:
+    horizon: 1
+- name: windows
+  type: windows
+  params:
+    lookback: 48
+- name: encoder
+  type: conv_autoencoder
+  params:
+    hidden_channels: 32
+    latent_channels: 8
+    epochs: 200
+    batch_size: 128
+    learning_rate: 0.01
+    min_lr: 0.0001
+    weight_decay: 0.01
+    patience: 30
+    scheduler: true
+    random_state: 0
+    device: cpu
+    prediction_batch_size: 1024
+    mode: encode
+- name: target_scaler
+  type: target_scale
+  params:
+    scaler:
+      type: standard
+- name: model
+  type: ridge
+  params:
+    alpha: 1.0
+run:
+  seed: 0
+  output_dir: ../runs
