@@ -13,12 +13,13 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from feature_selector.models.base import TorchModelRunner
 from feature_selector.tracking import RunTracker, StepContext
 from feature_selector import run_experiment
+from feature_selector.experiment import _log_final_metrics
 from support import write_config
 
 
 class TrackingTests(unittest.TestCase):
-    def test_runs_write_only_training_tensorboard_events(self) -> None:
-        """Keep reports on disk without generating final-metric or HParams sessions.
+    def test_runs_log_final_results_without_extra_tensorboard_sessions(self) -> None:
+        """Publish aggregate saved scores and a table alongside existing training events.
 
         Returns:
             None.
@@ -32,12 +33,13 @@ class TrackingTests(unittest.TestCase):
             ("conv_autoencoder", {"epochs": 1, "hidden_channels": 2, "latent_channels": 1}),
             ("conv_autoencoder", {"epochs": 1, "hidden_channels": 2,
                                   "latent_channels": 1, "compression": "features"}),
+            ("gru_conv_autoencoder", {"epochs": 1, "hidden_channels": 2, "latent_channels": 1}),
         ]
         with tempfile.TemporaryDirectory() as directory:
             for kind, params in models:
                 with self.subTest(model=kind, params=params):
                     spec = write_config(Path(directory))
-                    if kind == "conv_autoencoder":
+                    if kind.endswith("autoencoder"):
                         spec["data"].pop("target_path")
                         spec["data"].pop("target_column")
                         spec["pipeline"] = [spec["pipeline"][0], spec["pipeline"][2]]
@@ -53,8 +55,7 @@ class TrackingTests(unittest.TestCase):
                     events = EventAccumulator(str(tensorboard)).Reload()
                     self.assertFalse(any(tag.startswith("_hparams_/")
                                          for tag in events.Tags()["tensors"]))
-                    self.assertFalse(any(tag.startswith("results/")
-                                         for tag in events.Tags()["scalars"]))
+                    self.assertIn("results/summary/text_summary", events.Tags()["tensors"])
                     if kind != "ridge":
                         self.assertIn("pipeline/model/train/batch/loss", events.Tags()["scalars"])
                         self.assertIn("pipeline/model/validation/epoch/loss",
@@ -62,6 +63,50 @@ class TrackingTests(unittest.TestCase):
                     metrics = json.loads((run.artifact_dir / "metrics.json").read_text())
                     self.assertIn("train", metrics)
                     self.assertIn("validation", metrics)
+                    for split, report in metrics.items():
+                        scores = report.get("overall", report)
+                        for name in ("mae", "rmse", "r2", "pearson", "n"):
+                            tag = f"results/{split}/{name}"
+                            if scores[name] is None:
+                                self.assertNotIn(tag, events.Tags()["scalars"])
+                            else:
+                                scalar, = events.Scalars(tag)
+                                self.assertEqual(scalar.step, 0)
+                                np.testing.assert_allclose(scalar.value, scores[name], rtol=1e-6)
+                    self.assertFalse(any(tag.startswith("results/test/")
+                                         for tag in events.Tags()["scalars"]))
+                    table, = events.Tensors("results/summary/text_summary")
+                    markdown = table.tensor_proto.string_val[0].decode()
+                    self.assertIn("| train |", markdown)
+                    self.assertIn("| validation |", markdown)
+                    self.assertNotIn("per_feature", markdown)
+
+    def test_final_results_skip_undefined_scores_and_missing_splits(self) -> None:
+        """Keep unavailable scores readable without writing nonfinite scalars or test results.
+
+        Returns:
+            None.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tracker = RunTracker(root)
+            try:
+                _log_final_metrics(tracker, {
+                    "train": {"mae": 2.0, "rmse": 3.0, "r2": float("nan"),
+                              "pearson": None, "n": 1, "notes": {"r2": "constant target"}},
+                    "validation": {},
+                })
+            finally:
+                tracker.close()
+            events = EventAccumulator(str(root / "tensorboard")).Reload()
+            self.assertEqual(set(events.Tags()["scalars"]), {
+                "results/train/mae", "results/train/rmse", "results/train/n",
+            })
+            table, = events.Tensors("results/summary/text_summary")
+            markdown = table.tensor_proto.string_val[0].decode()
+            self.assertIn("| train | 2 | 3 | — | — | 1 |", markdown)
+            self.assertNotIn("validation", markdown)
+            self.assertNotIn("test", markdown)
 
     def test_batches_epochs_and_tensorboard_agree(self) -> None:
         """Emit exact batch sizes, weighted means and validation loss each epoch.

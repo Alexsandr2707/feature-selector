@@ -1,0 +1,42 @@
+data:
+  features_path: ../datasets/uzk/uzk.csv
+  target_path: ../datasets/uzk/uzk_lab.csv
+  target_column: UZK.Q.81AY00108.FINALPOINT
+  freq: 1h
+split:
+  train_fraction: 0.6
+  validation_fraction: 0.2
+pipeline:
+- name: future_target
+  type: align_target
+  params:
+    horizon: 1
+- name: encoder
+  type: frozen_pipeline
+  params:
+    path: ../runs/uzk_gru_conv_encoder.pkl
+- name: target_scaler
+  type: target_scale
+  params:
+    scaler:
+      type: standard
+- name: model
+  type: gru
+  params:
+    max_grad_norm: 1.0
+    hidden_size: 16
+    num_layers: 1
+    epochs: 200
+    batch_size: 128
+    learning_rate: 0.01
+    min_lr: 0.001
+    weight_decay: 0.01
+    patience: 200
+    checkpoint_start_epoch: 10
+    scheduler: true
+    random_state: 0
+    device: cpu
+    prediction_batch_size: 1024
+run:
+  seed: 0
+  output_dir: ../runs

@@ -390,4 +390,8 @@ transform export, frozen-prefix forecasting and reload without the source export
 
 TensorBoard contains batch/epoch losses and learning rates for neural models.
 Final metrics remain in metrics.json and configuration in config.yaml for every model.
-No additional TensorBoard sessions or final-metric scalar events are generated.
+Final train/validation scores are also published as results/{split}/{metric} scalars
+and a results/summary text table in the same TensorBoard run. Reconstruction summaries
+use overall scores in original units; per-feature scores remain in metrics.json.
+Undefined scores are omitted from scalars and shown as unavailable in the table.
+Test is neither evaluated nor logged automatically. No additional sessions are created.

@@ -1,4 +1,4 @@
-"""Convolutional autoencoders with feature-only or feature and temporal compression."""
+"""Convolutional and recurrent autoencoders for window reconstruction."""
 
 from collections.abc import Callable
 from typing import Any, Literal, Self
@@ -124,6 +124,57 @@ class _FeatureNetwork(_Network):
         return self.decoder(Z.transpose(1, 2)).transpose(1, 2)
 
 
+class _GRUConvNetwork(_Network):
+    """Encode recurrent states into latent features and reconstruct through another GRU."""
+
+    def __init__(self, features: int, hidden_channels: int, latent_channels: int) -> None:
+        """Configure separate encoder and decoder recurrent networks.
+
+        Parameters:
+            features (int): Positive input and reconstructed feature count.
+            hidden_channels (int): Positive hidden size of both single-layer GRUs.
+            latent_channels (int): Positive encoded feature count.
+
+        Returns:
+            None.
+        """
+        nn.Module.__init__(self)
+        self.encoder_gru = nn.GRU(features, hidden_channels, batch_first=True)
+        self.encoder_projection = nn.Conv1d(hidden_channels, latent_channels, kernel_size=1)
+        self.decoder_projection = nn.Sequential(
+            nn.Conv1d(latent_channels, hidden_channels, kernel_size=1),
+            nn.GELU(),
+        )
+        self.decoder_gru = nn.GRU(hidden_channels, hidden_channels, batch_first=True)
+        self.output_projection = nn.Linear(hidden_channels, features)
+
+    def encode(self, X: Tensor) -> Tensor:
+        """Compress recurrent features while preserving every timestep.
+
+        Parameters:
+            X (Tensor): Windows shaped (samples, timesteps, features).
+
+        Returns:
+            Tensor: Latent sequences shaped (samples, timesteps, latent_channels).
+        """
+        sequence, _ = self.encoder_gru(X)
+        return self.encoder_projection(sequence.transpose(1, 2)).transpose(1, 2)
+
+    def decode(self, Z: Tensor) -> Tensor:
+        """Reconstruct windows using only the supplied latent sequence.
+
+        Parameters:
+            Z (Tensor): Latent sequences shaped (samples, timesteps, latent_channels).
+
+        Returns:
+            Tensor: Reconstructions shaped (samples, timesteps, features).
+        """
+        expanded = self.decoder_projection(Z.transpose(1, 2)).transpose(1, 2)
+        # Start a fresh recurrent state so the encoder cannot bypass the latent bottleneck.
+        sequence, _ = self.decoder_gru(expanded)
+        return self.output_projection(sequence)
+
+
 class ConvAutoencoder(BaseEstimator):
     """Learn window reconstruction and expose encoded sequences as array transformations."""
 
@@ -194,6 +245,21 @@ class ConvAutoencoder(BaseEstimator):
         self.compression = compression
         self.max_grad_norm = max_grad_norm
 
+    def _build_network(self, window_shape: tuple[int, int]) -> _Network:
+        """Construct an untrained network for the selected convolutional architecture.
+
+        Parameters:
+            window_shape (tuple[int, int]): Positive timestep and feature counts.
+
+        Returns:
+            _Network: Network on CPU; the training routine selects its device and seed.
+        """
+        if self.compression == "features":
+            return _FeatureNetwork(window_shape[1], self.hidden_channels, self.latent_channels)
+        return _Network(
+            window_shape[1], window_shape[0], self.hidden_channels, self.latent_channels
+        )
+
     @staticmethod
     def _as_windows(
         X: NDArray[Any], *, shape: tuple[int, int] | None = None, allow_empty: bool = False
@@ -227,7 +293,8 @@ class ConvAutoencoder(BaseEstimator):
         X: NDArray[Any],
         y: Any = None,
         validation_data: NDArray[Any] | None = None,
-        *, context: StepContext | None = None,
+        *,
+        context: StepContext | None = None,
     ) -> Self:
         """Learn reconstruction using only training windows for weight updates.
 
@@ -258,15 +325,7 @@ class ConvAutoencoder(BaseEstimator):
         # Isolate initialization and training from the caller's torch random state.
         with torch.random.fork_rng(devices=devices):
             torch.manual_seed(self.random_state)
-            network: _Network
-            if self.compression == "features":
-                network = _FeatureNetwork(
-                    window_shape[1], self.hidden_channels, self.latent_channels
-                ).to(device)
-            else:
-                network = _Network(
-                    window_shape[1], window_shape[0], self.hidden_channels, self.latent_channels
-                ).to(device)
+            network = self._build_network(window_shape).to(device)
             optimizer = torch.optim.AdamW(
                 network.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
@@ -410,3 +469,77 @@ class ConvAutoencoder(BaseEstimator):
             WindowArray: Reconstructed or encoded training windows selected by mode.
         """
         return self.fit(X, y, validation_data).transform(X)
+
+
+class GRUConvAutoencoder(ConvAutoencoder):
+    """Compress recurrent features with pointwise convolutions, preserving window length."""
+
+    def __init__(
+        self,
+        hidden_channels: int = 32,
+        latent_channels: int = 8,
+        epochs: int = 200,
+        batch_size: int = 128,
+        learning_rate: float = 0.01,
+        min_lr: float = 0.0001,
+        weight_decay: float = 0.01,
+        patience: int = 30,
+        scheduler: bool = True,
+        random_state: int = 0,
+        device: str = "cpu",
+        prediction_batch_size: int = 1024,
+        mode: Literal["reconstruct", "encode"] = "reconstruct",
+        max_grad_norm: float | None = None,
+    ) -> None:
+        """Configure GRU widths and reconstruction training on complete windows.
+
+        Parameters:
+            hidden_channels (int): Positive hidden size of both single-layer GRUs.
+            latent_channels (int): Positive encoded width; use fewer channels than
+                input features for feature compression.
+            epochs (int): Positive maximum training epoch count.
+            batch_size (int): Positive training window count per batch.
+            learning_rate (float): Positive AdamW learning rate.
+            min_lr (float): Scheduler minimum between zero and learning_rate.
+            weight_decay (float): Nonnegative AdamW weight decay.
+            patience (int): Positive stale validation epoch limit for early stopping.
+            scheduler (bool): Whether to apply cosine learning rate decay.
+            random_state (int): Initialization and shuffle seed in [0, 2**63).
+            device (str): PyTorch device for training and inference.
+            prediction_batch_size (int): Positive inference window count per batch.
+            mode (Literal["reconstruct", "encode"]): Representation returned by
+                predict and transform; encode and decode remain available in either mode.
+            max_grad_norm (float | None): Finite positive joint L2 gradient limit;
+                None disables clipping.
+
+        Returns:
+            None.
+        """
+        super().__init__(
+            hidden_channels=hidden_channels,
+            latent_channels=latent_channels,
+            epochs=epochs,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            min_lr=min_lr,
+            weight_decay=weight_decay,
+            patience=patience,
+            scheduler=scheduler,
+            random_state=random_state,
+            device=device,
+            prediction_batch_size=prediction_batch_size,
+            mode=mode,
+            compression="features",
+            max_grad_norm=max_grad_norm,
+        )
+
+    def _build_network(self, window_shape: tuple[int, int]) -> _GRUConvNetwork:
+        """Construct independent GRU encoder and decoder around a feature bottleneck.
+
+        Parameters:
+            window_shape (tuple[int, int]): Positive timestep and feature counts.
+
+        Returns:
+            _GRUConvNetwork: Untrained network preserving the input temporal length.
+        """
+        return _GRUConvNetwork(window_shape[1], self.hidden_channels, self.latent_channels)

@@ -23,13 +23,13 @@ pipeline:
   type: conv_autoencoder
   params:
     compression: features
-    hidden_channels: 8
+    hidden_channels: 16
     latent_channels: 8
     epochs: 200
     batch_size: 128
     learning_rate: 0.01
     min_lr: 0.001
-    weight_decay: 0.01
+    weight_decay: 0.05
     patience: 30
     scheduler: true
     random_state: 0

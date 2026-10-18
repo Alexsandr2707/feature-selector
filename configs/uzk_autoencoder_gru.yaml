@@ -33,7 +33,7 @@ pipeline:
     weight_decay: 0.01
     patience: 200
     checkpoint_start_epoch: 10
-    scheduler: false
+    scheduler: true
     random_state: 0
     device: cpu
     prediction_batch_size: 1024

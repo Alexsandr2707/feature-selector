@@ -88,7 +88,7 @@ run:
 
 Встроенные типы: `exclude_intervals`, `align_target`, `windows`, `standard`,
 `minmax`, `robust`, `static`, `elasticnet`, `pls`, `target_scale`, `ridge`, `gru`,
-`conv_autoencoder`, `frozen_pipeline`, `passthrough`.
+`conv_autoencoder`, `gru_conv_autoencoder`, `frozen_pipeline`, `passthrough`.
 
 Каждый шаг получает `PipelineData`: X, необязательный y, имена признаков и метаданные
 времени, выборки и исключений. Шаги вызываются последовательно через одинаковые
@@ -209,6 +209,22 @@ gru_run = run_experiment("configs/uzk_feature_autoencoder_gru.yaml")
 В `Test_UZK_Autoencoder.ipynb` можно выбрать этот конфиг и путь экспорта,
 а в `Test_UZK_Autoencoder_GRU.ipynb` — соответствующий конфиг GRU.
 
+Отдельная модель `GRUConvAutoencoder` доступна как шаг `gru_conv_autoencoder`.
+Энкодер использует `GRU → Conv1d(kernel_size=1)`, декодер —
+`Conv1d(kernel_size=1) → GELU → GRU → Linear`. Длина окна сохраняется,
+а GRU учитывает прошлые точки внутри каждого окна. В декодер передаётся только
+латентная последовательность, без скрытого состояния энкодера. `hidden_channels`
+задаёт размер скрытого состояния обеих однослойных GRU, `latent_channels` — число
+сжатых признаков. Параметр `compression` у этой модели отсутствует.
+
+```python
+run = run_experiment("configs/uzk_gru_conv_autoencoder.yaml")
+run.pipeline.export_transform(
+    "runs/uzk_gru_conv_encoder.pkl", through="autoencoder", mode="encode"
+)
+gru_run = run_experiment("configs/uzk_gru_conv_autoencoder_gru.yaml")
+```
+
 Экспорт содержит обученные scaler, окна, исключения и энкодер. Исходная модель
 продолжает работать в своём режиме. `configs/uzk_autoencoder_gru.yaml` использует:
 
@@ -244,7 +260,12 @@ uv run tensorboard --logdir runs
 
 Графики обучения смотрите в **Scalars** с фильтром `loss|learning_rate`.
 Итоговые метрики всех моделей сохраняются в `metrics.json`, параметры — в
-`config.yaml`. TensorBoard содержит только ход обучения.
+`config.yaml`. В TensorBoard итоговые train/validation-метрики доступны в **Scalars**
+с фильтром `results/`, а таблица результатов — в **Text → results/summary**.
+Для автоэнкодеров публикуются метрики `overall` в исходных единицах;
+результаты по каждому признаку остаются в `metrics.json`. Неопределённые R² и Pearson
+в таблице обозначаются `—` и не записываются как скаляры. Test автоматически
+не вычисляется и не логгируется. Итоговые результаты появляются после завершения запуска.
 
 Каждый выполненный train-батч записывается сразу: loss до обновления весов, фактический
 размер батча, epoch, batch, сквозной step и learning rate. На каждой эпохе записываются

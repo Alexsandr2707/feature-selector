@@ -2,6 +2,7 @@
 
 import traceback
 from dataclasses import asdict
+from math import isfinite
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -14,6 +15,37 @@ from .factory import build_pipeline
 from .pipeline.data import prepare_data
 from .results import ExperimentRun
 from .tracking import RunTracker, StepContext
+
+
+def _log_final_metrics(tracker: RunTracker, metrics: dict[str, Any]) -> None:
+    """Publish final scores in original units as scalars and a compact results table.
+
+    Parameters:
+        tracker (RunTracker): Open tracker receiving TensorBoard summaries.
+        metrics (dict[str, Any]): Split reports containing regression scores or
+            reconstruction overall/per_feature scores. Undefined scores are shown
+            as unavailable in the table and omitted from scalar summaries.
+
+    Returns:
+        None: Writes aggregate results without additional runs or event directories.
+    """
+    names = ("mae", "rmse", "r2", "pearson", "n")
+    rows = ["| Split | MAE | RMSE | R² | Pearson | n |", "| --- | --- | --- | --- | --- | --- |"]
+    for split, report in metrics.items():
+        scores = report.get("overall", report)
+        if not scores:
+            continue
+        cells = []
+        for name in names:
+            value = scores.get(name)
+            if value is None or not isfinite(value):
+                cells.append("—")
+                continue
+            tracker.writer.add_scalar(f"results/{split}/{name}", value, global_step=0)
+            cells.append(str(value) if name == "n" else f"{value:.6g}")
+        rows.append(f"| {split} | {' | '.join(cells)} |")
+    if len(rows) > 2:
+        tracker.writer.add_text("results/summary", "\n".join(rows), global_step=0)
 
 
 def run_experiment(
@@ -79,6 +111,7 @@ def run_experiment(
             config, pipeline, data.temporal.boundaries, reports, metrics, metadata, directory
         )
         save_run(run)
+        _log_final_metrics(tracker, metrics)
         context.log_event("run_completed", {"seconds": perf_counter() - started})
 
         return run
