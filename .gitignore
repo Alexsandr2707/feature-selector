@@ -23,6 +23,9 @@ htmlcov/
 # Local notebooks and configuration
 .ipynb_checkpoints/
 *.ipynb
+!Test_UZK.ipynb
+!Test_UZK_Autoencoder.ipynb
+!Test_UZK_Autoencoder_GRU.ipynb
 .env
 .env.*
 !.env.example
