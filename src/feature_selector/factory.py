@@ -13,6 +13,7 @@ from .models.gru import GRURegressor
 from .models.ridge import WindowRidge
 from .pipeline import ConfiguredPipeline, Step
 from .pipeline.adapters import ModelStep, TargetScale, TransformerStep
+from .pipeline.filter import TargetFilter
 from .pipeline.frozen import FrozenPipeline
 from .pipeline.temporal import AlignTarget, ExcludeIntervals, Windows
 from .selectors import ElasticNetSelector, PLSSelector, StaticSelector
@@ -113,6 +114,7 @@ register_step("conv_autoencoder", _model(ConvAutoencoder, reconstructs=True))
 register_step("gru_conv_autoencoder", _model(GRUConvAutoencoder, reconstructs=True))
 register_step("target_scale", _target_scale)
 register_step("exclude_intervals", ExcludeIntervals)
+register_step("filter", TargetFilter)
 register_step("align_target", AlignTarget)
 register_step("windows", Windows)
 register_step("frozen_pipeline", FrozenPipeline)

@@ -3,7 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self, cast
+from typing import Any, Self
 
 import yaml
 
@@ -46,6 +46,7 @@ class ExperimentConfig:
 
         config.data.setdefault("freq", "1h")
         names: set[str] = set()
+        params: dict[str, Any]
 
         for spec in config.pipeline:
             if isinstance(spec, tuple):
@@ -64,8 +65,6 @@ class ExperimentConfig:
                 if not isinstance(spec.get("params", {}), dict):
                     raise TypeError("Step params must be a mapping")
                 params = spec.get("params", {})
-
-            params = cast(dict, params)
 
             # Resolve Python and YAML component paths before saving a rerunnable config.
             paths = {

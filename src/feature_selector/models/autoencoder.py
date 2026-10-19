@@ -213,11 +213,11 @@ class ConvAutoencoder(BaseEstimator):
             epochs (int): Positive maximum number of training epochs.
             batch_size (int): Positive number of windows per training batch.
             learning_rate (float): Finite positive AdamW learning rate.
-            min_lr (float): Finite scheduler minimum between zero and learning_rate.
+            min_lr (float): Cosine scheduler minimum; used only when scheduler is enabled.
             weight_decay (float): Finite nonnegative AdamW weight decay.
             patience (int): Positive number of stale validation epochs before stopping.
             scheduler (bool): Whether to apply cosine learning rate decay.
-            random_state (int): Initialization and batch shuffle seed in [0, 2**63).
+            random_state (int): PyTorch initialization and batch shuffling seed.
             device (str): PyTorch device used for training and inference.
             prediction_batch_size (int): Positive maximum windows per inference batch.
             mode (Literal["reconstruct", "encode"]): Output representation for transform/predict.
@@ -500,11 +500,11 @@ class GRUConvAutoencoder(ConvAutoencoder):
             epochs (int): Positive maximum training epoch count.
             batch_size (int): Positive training window count per batch.
             learning_rate (float): Positive AdamW learning rate.
-            min_lr (float): Scheduler minimum between zero and learning_rate.
+            min_lr (float): Cosine scheduler minimum; used only when scheduler is enabled.
             weight_decay (float): Nonnegative AdamW weight decay.
             patience (int): Positive stale validation epoch limit for early stopping.
             scheduler (bool): Whether to apply cosine learning rate decay.
-            random_state (int): Initialization and shuffle seed in [0, 2**63).
+            random_state (int): PyTorch initialization and batch shuffling seed.
             device (str): PyTorch device for training and inference.
             prediction_batch_size (int): Positive inference window count per batch.
             mode (Literal["reconstruct", "encode"]): Representation returned by

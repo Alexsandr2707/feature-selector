@@ -68,7 +68,7 @@ def _plot_predictions(
         truth_color (str | None): Target color; None uses the prediction color.
 
     Returns:
-        None: Adds two curves to the axes.
+        None: Adds two curves with ground truth drawn above predictions.
     """
     frame = predictions.loc[:, ["target_time", "y_true", "y_pred"]].copy()
     frame["target_time"] = pd.to_datetime(frame["target_time"], errors="raise")
@@ -86,6 +86,7 @@ def _plot_predictions(
         marker="." if len(truth) == 1 else None,
         markersize=1,
         label=f"{label}ground truth",
+        zorder=3,
     )
     ax.plot(
         prediction.index,
@@ -95,6 +96,7 @@ def _plot_predictions(
         marker="." if len(prediction) == 1 else None,
         markersize=1,
         label=f"{label}prediction",
+        zorder=2,
     )
 
 

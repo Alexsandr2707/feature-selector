@@ -153,7 +153,8 @@ class Windows(Step):
         if not isinstance(data.X, pd.DataFrame) or self.lookback < 1:
             raise ValueError("windows requires a DataFrame and positive lookback")
         times = pd.DatetimeIndex(data.X.index)
-        regular = np.diff(times.as_unit("ns").asi8) == data.temporal.frequency.value  # type:ignore
+        nanoseconds = pd.DatetimeIndex(times.as_unit("ns")).asi8
+        regular = np.diff(nanoseconds) == data.temporal.frequency.value
         if len(times) > 1 and not regular.all():
             raise ValueError("windows requires a regular uncompressed grid")
         values = data.X.to_numpy(dtype=float)

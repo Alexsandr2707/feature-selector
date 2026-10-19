@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from inspect import signature
-from typing import Any, Self, cast
+from typing import Any, Self
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,8 @@ class TransformerStep(Step):
         """Store a transformer and its training target requirement.
 
         Parameters:
-            estimator (BaseEstimator): Estimator exposing fit and transform.
+            estimator (BaseEstimator): Estimator exposing fit and transform, with
+                DataFrame or NumPy output.
             requires_y (bool): Filter complete feature/target pairs before fit.
 
         Returns:
@@ -75,7 +76,7 @@ class TransformerStep(Step):
             context (StepContext | None): Execution diagnostics.
 
         Returns:
-            PipelineData: Transformed values with unchanged examples and y.
+            PipelineData: DataFrame or NumPy features with unchanged examples and y.
         """
         if data.feature_names != self.input_names_:
             raise ValueError("Feature names and order must match fit")
@@ -83,12 +84,13 @@ class TransformerStep(Step):
         if not callable(transform):
             raise TypeError("Transformer must provide transform")
         values = transform(data.X)
-        values = cast(pd.DataFrame, values)
+        if not isinstance(values, (pd.DataFrame, np.ndarray)):
+            raise TypeError("Transformer must return a DataFrame or NumPy array")
 
         names = data.feature_names
         get_names = getattr(self.estimator, "get_feature_names_out", None)
         if callable(get_names):
-            names = tuple(get_names(list(names)))  # type: ignore
+            names = tuple(np.asarray(get_names(list(names)), dtype=object))
         elif values.shape[-1] != len(names):
             names = tuple(f"x{i}" for i in range(values.shape[-1]))
         if isinstance(data.X, pd.DataFrame) and not isinstance(values, pd.DataFrame):
@@ -180,7 +182,7 @@ class TargetScale(Step):
         if not callable(transform):
             raise TypeError("Target scaler must provide transform")
         if observed.any():
-            values[observed] = transform(values[observed, None]).ravel()  # type:ignore
+            values[observed] = np.asarray(transform(values[observed, None])).ravel()
         return replace(data, y=values)
 
     def inverse_prediction(self, prediction: PredictionData) -> PredictionData:
@@ -197,10 +199,12 @@ class TargetScale(Step):
         inverse = getattr(self.scaler, "inverse_transform", None)
         if not callable(inverse):
             raise TypeError("Target scaler must provide inverse_transform")
-        values = inverse(prediction.values.reshape(-1, 1)).ravel()  # type:ignore
+        values = np.asarray(inverse(prediction.values.reshape(-1, 1))).ravel()
 
         truth = (
-            None if prediction.truth is None else inverse(prediction.truth.reshape(-1, 1)).ravel()  # type:ignore
+            None
+            if prediction.truth is None
+            else np.asarray(inverse(prediction.truth.reshape(-1, 1))).ravel()
         )
         return replace(prediction, values=values, truth=truth)
 
@@ -290,8 +294,7 @@ class ModelStep(Step):
         if not callable(transform):
             raise TypeError("Intermediate model must provide transform")
         selected = data.select(data.valid())
-        values = transform(np.asarray(selected.X))
-        values = cast(np.ndarray, values)
+        values = np.asarray(transform(np.asarray(selected.X)))
         encoded = getattr(self.estimator, "mode", None) == "encode"
         names = tuple(f"z{i}" for i in range(values.shape[-1]))
         if not encoded and values.shape[-1] == len(self.input_names_):

@@ -1,11 +1,15 @@
 """Run orchestration independent of concrete model and transformation classes."""
 
+import random
 import traceback
 from dataclasses import asdict
 from math import isfinite
 from pathlib import Path
 from time import perf_counter
 from typing import Any
+
+import numpy as np
+import torch
 
 from .artifacts import create_run_dir, input_metadata, save_run, write_json
 from .config import ExperimentConfig, load_config
@@ -15,6 +19,22 @@ from .factory import build_pipeline
 from .pipeline.data import prepare_data
 from .results import ExperimentRun
 from .tracking import RunTracker, StepContext
+
+
+def _set_global_seed(seed: int) -> None:
+    """Initialize the process-wide Python, NumPy and PyTorch random generators.
+
+    Parameters:
+        seed (int): Seed in [0, 2**32 - 1], shared by Python, NumPy, CPU and CUDA generators.
+
+    Returns:
+        None: Resets global RNG states for subsequent random operations.
+    """
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 
 def _log_final_metrics(tracker: RunTracker, metrics: dict[str, Any]) -> None:
@@ -55,6 +75,8 @@ def run_experiment(
 
     Parameters:
         config (ExperimentConfig | dict[str, Any] | str | Path): Settings or YAML path.
+            run.seed initializes global Python, NumPy and PyTorch RNG states before loading
+            data and constructing the pipeline; estimator random_state parameters remain local.
 
     Returns:
         ExperimentRun: Fitted pipeline and saved reports; test requires explicit prediction.
@@ -73,6 +95,7 @@ def run_experiment(
     started = perf_counter()
     try:
         context.log_event("run_started", {"seed": config.run["seed"]})
+        _set_global_seed(config.run["seed"])
         source = (
             load_data(**config.data)
             if "target_path" in config.data
