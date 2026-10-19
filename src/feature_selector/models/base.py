@@ -98,6 +98,7 @@ class TorchModelRunner:
             Self: Runner with epoch and batch losses and the best eligible validation
                 weights. Without validation or eligible epochs, final weights are kept
                 and best_epoch_ is None; validation_loss is None only without validation.
+                Training epoch means are stored in history_ and JSONL only.
         """
         for name, value in (
             ("epochs", epochs),
@@ -176,8 +177,15 @@ class TorchModelRunner:
                 }
             )
 
-            context.log_metrics({"loss": training_loss}, split="train", epoch=epoch,
-                                samples=len(X))
+            # Retain epoch means for analysis without publishing another training curve.
+            context.log_event("metrics", {
+                "values": {"loss": training_loss},
+                "split": "train",
+                "epoch": epoch,
+                "batch": None,
+                "step": None,
+                "samples": len(X),
+            })
             if validation_loss is not None and validation_data is not None:
                 context.log_metrics({"loss": validation_loss}, split="validation", epoch=epoch,
                                     samples=len(validation_data[0]))

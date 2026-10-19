@@ -2,7 +2,6 @@
 
 from typing import Any, Self
 
-import numpy as np
 import torch
 from numpy.typing import NDArray
 from sklearn.base import BaseEstimator, RegressorMixin
@@ -128,7 +127,8 @@ class GRURegressor(RegressorMixin, BaseEstimator):
         X: NDArray[Any],
         y: NDArray[Any],
         validation_data: tuple[NDArray[Any], NDArray[Any]] | None = None,
-        *, context: StepContext | None = None,
+        *,
+        context: StepContext | None = None,
     ) -> Self:
         """Train on windows, selecting weights by validation loss when available.
 
