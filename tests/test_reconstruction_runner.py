@@ -31,10 +31,9 @@ class ReconstructionRunnerTests(unittest.TestCase):
         self.assertEqual(len(runner.history_), 3)
         expected_loss = float(np.mean(X ** 2))
         for epoch in runner.history_:
-            self.assertEqual([batch["samples"] for batch in epoch["batches"]], [2, 2, 1])
-            weighted_loss = sum(b["train_loss"] * b["samples"] for b in epoch["batches"]) / 5
+            self.assertEqual([batch["samples"] for batch in epoch["batches"]], [2, 2])
+            weighted_loss = sum(b["train_loss"] * b["samples"] for b in epoch["batches"]) / 4
             self.assertAlmostEqual(epoch["train_loss"], weighted_loss)
-            self.assertAlmostEqual(epoch["train_loss"], expected_loss)
             self.assertAlmostEqual(epoch["validation_loss"], expected_loss)
         json.dumps(runner.history_, allow_nan=False)
 

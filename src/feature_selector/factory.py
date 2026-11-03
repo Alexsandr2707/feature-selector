@@ -7,7 +7,7 @@ from typing import Any
 from sklearn.base import BaseEstimator, clone
 from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
 
-from .models.autoencoder import ConvAutoencoder, GRUConvAutoencoder
+from .models.autoencoder import ConvAutoencoder, GRUAutoencoder, S4Autoencoder
 from .models.ensemble import GRUEnsembleRegressor
 from .models.gru import GRURegressor
 from .models.ridge import WindowRidge
@@ -15,7 +15,7 @@ from .pipeline import ConfiguredPipeline, Step
 from .pipeline.adapters import ModelStep, TargetScale, TransformerStep
 from .pipeline.filter import TargetFilter
 from .pipeline.frozen import FrozenPipeline
-from .pipeline.temporal import AlignTarget, ExcludeIntervals, Windows
+from .pipeline.temporal import AlignTarget, ExcludeIntervals, TemporalPool, Windows
 from .selectors import ElasticNetSelector, PLSSelector, StaticSelector
 
 SCALERS = {"standard": StandardScaler, "minmax": MinMaxScaler, "robust": RobustScaler}
@@ -111,12 +111,14 @@ register_step("ridge", _model(WindowRidge))
 register_step("gru", _model(GRURegressor))
 register_step("gru_ensemble", _model(GRUEnsembleRegressor))
 register_step("conv_autoencoder", _model(ConvAutoencoder, reconstructs=True))
-register_step("gru_conv_autoencoder", _model(GRUConvAutoencoder, reconstructs=True))
+register_step("gru_autoencoder", _model(GRUAutoencoder, reconstructs=True))
+register_step("s4_autoencoder", _model(S4Autoencoder, reconstructs=True))
 register_step("target_scale", _target_scale)
 register_step("exclude_intervals", ExcludeIntervals)
 register_step("filter", TargetFilter)
 register_step("align_target", AlignTarget)
 register_step("windows", Windows)
+register_step("temporal_pool", TemporalPool)
 register_step("frozen_pipeline", FrozenPipeline)
 register_step("passthrough", Step)
 

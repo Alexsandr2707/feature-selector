@@ -79,6 +79,7 @@ class TorchRunnerTests(unittest.TestCase):
         X = np.ones((4, 2, 1), dtype=np.float32)
         y = np.ones(4, dtype=np.float32)
         model = GRURegressor(
+            batch_size=1,
             hidden_size=2, epochs=6, patience=1, checkpoint_start_epoch=3
         )
         # The first minimum must not prevent the first eligible checkpoint from being selected.
@@ -122,7 +123,7 @@ class TorchRunnerTests(unittest.TestCase):
         runner = TorchModelRunner(network, torch.optim.SGD(network.parameters(), lr=0))
         X = np.arange(5, dtype=np.float32).reshape(-1, 1)
         y = 2 * X[:, 0]
-        runner.fit(X, y, (X, y), epochs=1, batch_size=2, patience=1, random_state=3)
+        runner.fit(X, y, (X, y), epochs=1, batch_size=5, patience=1, random_state=3)
 
         expected_loss = float(np.mean((X[:, 0] - y) ** 2))
         self.assertAlmostEqual(runner.history_[0]["train_loss"], expected_loss)
@@ -132,7 +133,7 @@ class TorchRunnerTests(unittest.TestCase):
         np.testing.assert_array_equal(prediction, X[:, 0])
 
     def test_batch_history_early_stopping_and_reload(self) -> None:
-        """Keep unequal batch sizes, epoch averaging and restored weights consistent."""
+        """Keep full training batches, epoch averaging and restored weights consistent."""
         import torch
         from feature_selector.models.base import TorchModelRunner
 
@@ -151,11 +152,11 @@ class TorchRunnerTests(unittest.TestCase):
         self.assertEqual(len(runner.history_), 3)
         for epoch in runner.history_:
             batches = epoch["batches"]
-            self.assertEqual([batch["batch"] for batch in batches], [1, 2, 3])
-            self.assertEqual([batch["samples"] for batch in batches], [2, 2, 1])
-            weighted_loss = sum(b["train_loss"] * b["samples"] for b in batches) / 5
+            self.assertEqual([batch["batch"] for batch in batches], [1, 2])
+            self.assertEqual([batch["samples"] for batch in batches], [2, 2])
+            weighted_loss = sum(b["train_loss"] * b["samples"] for b in batches) / 4
             self.assertAlmostEqual(epoch["train_loss"], weighted_loss)
-            self.assertAlmostEqual(weighted_loss, float(np.mean(y ** 2)))
+            self.assertAlmostEqual(epoch["validation_loss"], float(np.mean(y ** 2)))
         json.dumps(runner.history_, allow_nan=False)
         restored = pickle.loads(pickle.dumps(runner))
         np.testing.assert_array_equal(restored.predict(X), runner.predict(X))
@@ -207,7 +208,7 @@ class TorchRunnerTests(unittest.TestCase):
         model.fit(X, y, (X, y))
         self.assertTrue(torch.equal(state, torch.get_rng_state()))
         self.assertIs(model.history_, model.runner_.history_)
-        self.assertEqual(len(model.history_[0]["batches"]), 2)
+        self.assertEqual(len(model.history_[0]["batches"]), 1)
         np.testing.assert_array_equal(
             model.predict(X), model.runner_.predict(X, batch_size=2)
         )

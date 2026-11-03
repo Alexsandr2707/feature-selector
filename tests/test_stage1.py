@@ -32,8 +32,11 @@ class ExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             spec = write_config(root, sparse=True)
+            spec["run"]["experiment_name"] = "ridge_training"
             before = deepcopy(spec)
             run = run_experiment(spec)
+            self.assertEqual(run.artifact_dir.parent, root / "runs" / "ridge_training")
+            self.assertRegex(run.artifact_dir.name, r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?$")
             self.assertEqual(spec, before)
             self.assertAlmostEqual(run.pipeline["scaler"].estimator.mean_[0], 17.5)
             self.assertNotIn("test", run.predictions)
@@ -56,6 +59,7 @@ class ExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             spec = write_config(Path(directory))
             run = run_experiment(spec)
+            self.assertEqual(run.artifact_dir.parent, Path(directory) / "runs" / "default")
             report = run.predict(load_features(spec["data"]["features_path"]), "test")
             self.assertTrue(report.y_true.isna().all())
             self.assertTrue(np.isfinite(report.y_pred).all())
@@ -113,7 +117,7 @@ class ExperimentTests(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 run_experiment(spec)
             self.assertIn("pipeline/model", " ".join(caught.exception.__notes__))
-            run_dir = next((root / "runs").iterdir())
+            run_dir = next((root / "runs" / "default").iterdir())
             self.assertTrue((run_dir / "failure.json").is_file())
             self.assertIn("Traceback", (run_dir / "run.log").read_text())
             lines = (run_dir / "events.jsonl").read_text().splitlines()
@@ -171,6 +175,6 @@ class ExperimentTests(unittest.TestCase):
             with patch.object(WindowRidge, "predict", return_value=np.full(43, np.nan)):
                 with self.assertRaisesRegex(ValueError, "finite"):
                     run_experiment(spec)
-            run_dir = next((root / "runs").iterdir())
+            run_dir = next((root / "runs" / "default").iterdir())
             self.assertTrue((run_dir / "failure.json").is_file())
             self.assertFalse((run_dir / "run.pkl").exists())

@@ -7,6 +7,11 @@ split:
   train_fraction: 0.6
   validation_fraction: 0.2
 pipeline:
+- name: filter
+  type: filter
+  params:
+    filter_freq: 1W
+    max_diff: 30
 - name: scale
   type: standard
 - name: future_target
@@ -22,4 +27,5 @@ pipeline:
   params:
     alpha: 1.0
 run:
+  experiment_name: example
   output_dir: ../runs

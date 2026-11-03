@@ -7,11 +7,10 @@ import json
 import pickle
 import platform
 from dataclasses import asdict, is_dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -76,18 +75,29 @@ def write_json(path: str | Path, value: Any) -> None:
 
 
 def create_run_dir(output_dir: str | Path) -> Path:
-    """Create a run directory named with a UTC timestamp and random suffix.
+    """Create a run directory named with local time to the nearest second.
 
     Parameters:
         output_dir (str | Path): Parent directory, created if missing.
 
     Returns:
-        Path: Newly created directory; an existing destination is never reused.
+        Path: Newly created YYYY-MM-DD_HH-MM-SS directory, with _2, _3, etc. added
+            on collisions. An existing destination is never reused.
     """
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    directory = Path(output_dir) / f"{stamp}-{uuid4().hex[:8]}"
-    directory.mkdir(parents=True, exist_ok=False)
-    return directory
+    parent = Path(output_dir)
+    parent.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    attempt = 1
+    while True:
+        name = stamp if attempt == 1 else f"{stamp}_{attempt}"
+        directory = parent / name
+        try:
+            # Atomic creation also handles concurrent launches in the same second.
+            directory.mkdir(exist_ok=False)
+        except FileExistsError:
+            attempt += 1
+        else:
+            return directory
 
 
 def input_metadata(config: ExperimentConfig) -> dict[str, Any]:

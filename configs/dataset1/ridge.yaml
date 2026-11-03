@@ -1,12 +1,17 @@
 data:
-  features_path: ../datasets/dataset1/features.csv
-  target_path: ../datasets/dataset1/target.csv
+  features_path: ../../datasets/dataset1/features.csv
+  target_path: ../../datasets/dataset1/target.csv
   target_column: 35_21_1000.Q.KatKlD.1444.octanI
   freq: 1h
 split:
   train_fraction: 0.6
   validation_fraction: 0.2
 pipeline:
+- name: filter
+  type: filter
+  params:
+    filter_freq: 1W
+    max_diff: 30
 - name: scaler
   type: standard
 - name: future_target
@@ -27,5 +32,6 @@ pipeline:
   params:
     alpha: 10.0
 run:
+  experiment_name: dataset1_ridge
   seed: 0
-  output_dir: ../runs
+  output_dir: ../../runs

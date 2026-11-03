@@ -1,5 +1,5 @@
 data:
-  features_path: ../datasets/uzk/uzk.csv
+  features_path: ../../../datasets/uzk/uzk.csv
   freq: 1h
 split:
   train_fraction: 0.6
@@ -29,7 +29,7 @@ pipeline:
     batch_size: 128
     learning_rate: 0.01
     min_lr: 0.001
-    weight_decay: 0.01
+    weight_decay: 0.05
     patience: 30
     scheduler: true
     random_state: 0
@@ -37,5 +37,6 @@ pipeline:
     prediction_batch_size: 1024
     mode: reconstruct
 run:
+  experiment_name: uzk_feature_autoencoder_pretrain
   seed: 0
-  output_dir: ../runs
+  output_dir: ../../../runs

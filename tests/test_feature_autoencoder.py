@@ -74,7 +74,7 @@ class FeatureAutoencoderTests(unittest.TestCase):
                 self.assertFalse(hasattr(fresh, "runner_"))
                 self.assertTrue(all(e["validation_loss"] is not None for e in model.history_))
                 self.assertEqual(
-                    [batch["samples"] for batch in model.history_[0]["batches"]], [4, 2]
+                    [batch["samples"] for batch in model.history_[0]["batches"]], [4]
                 )
 
     def test_learning_and_compression_switch_on_refit(self) -> None:
@@ -85,6 +85,7 @@ class FeatureAutoencoderTests(unittest.TestCase):
         """
         X = np.ones((6, 5, 3), dtype=np.float32)
         model = ConvAutoencoder(
+            batch_size=1,
             compression="features", hidden_channels=4, latent_channels=2,
             epochs=20, learning_rate=0.03, scheduler=False,
         ).fit(X)
@@ -125,7 +126,7 @@ class FeatureAutoencoderTests(unittest.TestCase):
                 {"name": "encoder", "type": "frozen_pipeline", "params": {"path": str(path)}},
                 forecast["pipeline"][3],
                 {"name": "gru", "type": "gru", "params": {
-                    "epochs": 1, "hidden_size": 2, "batch_size": 8}},
+                    "epochs": 1, "hidden_size": 2, "batch_size": 1}},
             ]
             with patch.object(ConvAutoencoder, "fit", side_effect=AssertionError("refit")):
                 run = run_experiment(forecast)

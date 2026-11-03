@@ -1,7 +1,7 @@
 [project]
 name = "feature_selector"
 version = "0.1.0"
-description = "Leakage-safe temporal feature selection experiments"
+description = "Temporal feature selection and representation learning experiments"
 readme = "README.md"
 authors = [
     { name = "Novikov Alexander", email = "sasha02707@gmail.com" }
@@ -16,13 +16,15 @@ dependencies = [
     "torch>=2.14.1",
     "matplotlib>=3.11.2",
     "tensorboard>=2.20",
+    "einops>=0.8.2",
+    "pytorch-lightning>=2.6.6",
 ]
 
 [project.scripts]
 feature-selector = "feature_selector.cli:main"
 
 [build-system]
-requires = ["uv_build>=0.12.10,<0.13"]
+requires = ["uv_build>=0.12.10,<0.14"]
 build-backend = "uv_build"
 
 [tool.ruff]
@@ -31,4 +33,5 @@ line-length = 100
 [dependency-groups]
 dev = [
     "ipykernel>=7.4.0",
+    "nbstripout>=0.9.1",
 ]
