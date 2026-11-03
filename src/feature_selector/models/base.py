@@ -85,7 +85,8 @@ class TorchModelRunner:
                 and targets with the training target's trailing shape; None keeps
                 final weights without early stopping.
             epochs (int): Maximum number of epochs.
-            batch_size (int): Samples per training batch.
+            batch_size (int): Samples per training batch; must not exceed the
+                number of training samples. Incomplete training batches are discarded.
             patience (int): Eligible epochs without improvement before stopping.
             random_state (int): Batch shuffling seed.
             context (StepContext | None): Batch and epoch telemetry for this execution.
@@ -147,7 +148,10 @@ class TorchModelRunner:
             batch_size=batch_size,
             shuffle=True,
             generator=generator,
+            drop_last=True,
         )
+        if not len(loader):
+            raise ValueError("drop_last=True requires at least batch_size training samples")
 
         best_loss = float("inf")
         stale_epochs = 0
@@ -184,7 +188,7 @@ class TorchModelRunner:
                 "epoch": epoch,
                 "batch": None,
                 "step": None,
-                "samples": len(X),
+                "samples": sum(batch["samples"] for batch in batches),
             })
             if validation_loss is not None and validation_data is not None:
                 context.log_metrics({"loss": validation_loss}, split="validation", epoch=epoch,

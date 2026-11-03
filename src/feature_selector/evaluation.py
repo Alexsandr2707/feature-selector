@@ -1,6 +1,7 @@
 """Metrics in original target units, with explanations for undefined values."""
 
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -12,15 +13,30 @@ if TYPE_CHECKING:
     from .pipeline import PredictionData
 
 
+MetricName = Literal["mae", "rmse", "mape", "pearson", "pearson_pvalue", "r2"]
+METRIC_NAMES: tuple[MetricName, ...] = ("mae", "rmse", "mape", "pearson", "pearson_pvalue", "r2")
+
+
 class RegressionMetrics(TypedDict):
     """Regression scores, sample count and explanations for undefined scores."""
 
     mae: float
     rmse: float
+    mape: float
     r2: float
     pearson: float
+    pearson_pvalue: float
     n: int
     notes: dict[str, str]
+
+
+class MetricSummary(TypedDict):
+    """Mean and sample deviation over finite run scores, with explicit coverage."""
+
+    mean: float
+    std: float
+    n_valid: int
+    n_total: int
 
 
 class ReconstructionMetrics(TypedDict):
@@ -52,15 +68,16 @@ def reconstruction_metrics(report: pd.DataFrame) -> ReconstructionMetrics:
 
 
 def regression_metrics(y_true: ArrayLike, y_pred: ArrayLike) -> RegressionMetrics:
-    """Compute regression scores, reporting undefined R² and Pearson values as NaN.
+    """Compute regression errors and Pearson correlation with its two-sided p-value.
 
     Parameters:
         y_true (ArrayLike): Nonempty one-dimensional finite targets convertible to float.
         y_pred (ArrayLike): Finite predictions with the same shape, in the same target units.
 
     Returns:
-        RegressionMetrics: MAE, RMSE, R², Pearson correlation, sample count and explanations
-            in notes for scores undefined on constant or single-observation inputs.
+        RegressionMetrics: MAE, RMSE, MAPE in percent, R², Pearson correlation and p-value,
+            sample count and notes. MAPE is NaN if any target is zero. Undefined R²,
+            correlation and p-value are also NaN with explanations in notes.
     """
     truth = np.asarray(y_true, dtype=float)
     prediction = np.asarray(y_pred, dtype=float)
@@ -74,7 +91,15 @@ def regression_metrics(y_true: ArrayLike, y_pred: ArrayLike) -> RegressionMetric
     notes: dict[str, str] = {}
     r2 = float("nan")
     pearson = float("nan")
+    pearson_pvalue = float("nan")
+    mape = float("nan")
     has_variable_target = sample_count >= 2 and np.ptp(truth) != 0
+
+    # A percentage error at zero is undefined; an epsilon would hide that limitation.
+    if np.any(truth == 0):
+        notes["mape"] = "MAPE requires nonzero targets"
+    else:
+        mape = float(np.mean(np.abs((truth - prediction) / truth)) * 100)
 
     # Keep undefined scores visible instead of using sklearn's constant-target fallback.
     if not has_variable_target:
@@ -84,17 +109,52 @@ def regression_metrics(y_true: ArrayLike, y_pred: ArrayLike) -> RegressionMetric
 
     if not has_variable_target or np.ptp(prediction) == 0:
         notes["pearson"] = "Pearson requires at least two observations and two nonconstant arrays"
+        notes["pearson_pvalue"] = notes["pearson"]
     else:
-        pearson = cast(float, pearsonr(truth, prediction)[0])
+        correlation = pearsonr(truth, prediction)
+        pearson = float(correlation[0])  # type: ignore
+        pearson_pvalue = float(correlation[1])  # type: ignore
 
     return RegressionMetrics(
         mae=float(mean_absolute_error(truth, prediction)),
         rmse=float(np.sqrt(mean_squared_error(truth, prediction))),
+        mape=mape,
         r2=r2,
         pearson=pearson,
+        pearson_pvalue=pearson_pvalue,
         n=sample_count,
         notes=notes,
     )
+
+
+def summarize_regression_metrics(
+    metrics: Sequence[RegressionMetrics],
+) -> dict[MetricName, MetricSummary]:
+    """Summarize equally weighted run scores as means and sample standard deviations.
+
+    Parameters:
+        metrics (Sequence[RegressionMetrics]): Nonempty sequence of per-run scores.
+            Runs should evaluate the same examples; n is not aggregated or used as a weight.
+
+    Returns:
+        dict[MetricName, MetricSummary]: Per-score mean, std with ddof=1, and finite/total
+            run counts. Nonfinite scores are excluded. Mean is NaN without finite scores;
+            std is NaN with fewer than two. P-values are summarized, not statistically combined.
+    """
+    if not metrics:
+        raise ValueError("Metric summaries require at least one run")
+
+    summaries: dict[MetricName, MetricSummary] = {}
+    for name in METRIC_NAMES:
+        values = np.asarray([scores[name] for scores in metrics], dtype=float)
+        finite = values[np.isfinite(values)]
+        summaries[name] = MetricSummary(
+            mean=float(np.mean(finite)) if len(finite) else float("nan"),
+            std=float(np.std(finite, ddof=1)) if len(finite) >= 2 else float("nan"),
+            n_valid=len(finite),
+            n_total=len(metrics),
+        )
+    return summaries
 
 
 def prediction_report(prediction: "PredictionData", mask: "NDArray[np.bool_]") -> pd.DataFrame:

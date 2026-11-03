@@ -1,0 +1,64 @@
+data:
+  features_path: ../../../datasets/uzk/uzk.csv
+  target_path: ../../../datasets/uzk/uzk_lab.csv
+  target_column: UZK.Q.81AY00108.FINALPOINT
+  freq: 1h
+split:
+  train_fraction: 0.6
+  validation_fraction: 0.2
+pipeline:
+- name: exclusions
+  type: exclude_intervals
+  params:
+    intervals:
+    - - '2022-10-01 00:00:00'
+      - '2022-10-16 23:00:00'
+    - - '2023-09-20 00:00:00'
+      - '2023-12-31 23:00:00'
+- name: filter
+  type: filter
+  params:
+    filter_freq: 1W
+    max_diff: 30
+- name: future_target
+  type: align_target
+  params:
+    horizon: 1
+- name: encoder
+  type: frozen_pipeline
+  params:
+    path: ../../../runs/uzk_s4_encoder.pkl
+- name: temporal_compression
+  type: temporal_pool
+  params:
+    factor: 1
+- name: target_scaler
+  type: target_scale
+  params:
+    scaler:
+      type: standard
+- name: model
+  type: gru_ensemble
+  params:
+    n_estimators: 10
+    alpha: 0.2
+    fit_intercept: true
+    random_state: 0
+    gru_params:
+      # max_grad_norm: 1.0
+      hidden_size: 16
+      num_layers: 1
+      epochs: 200
+      batch_size: 64
+      learning_rate: 0.01
+      min_lr: 0.001
+      weight_decay: 0.5
+      patience: 30
+      checkpoint_start_epoch: 10
+      scheduler: true
+      device: cpu
+      prediction_batch_size: 1024
+run:
+  experiment_name: uzk_s4_autoencoder_ensemble
+  seed: 0
+  output_dir: ../../../runs

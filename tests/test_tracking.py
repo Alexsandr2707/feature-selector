@@ -18,6 +18,34 @@ from support import write_config
 
 
 class TrackingTests(unittest.TestCase):
+    def test_same_timestamp_in_different_experiments_keeps_logs_separate(self) -> None:
+        """Isolate simultaneous trackers whose directories share a timestamp name.
+
+        Returns:
+            None: Checks file logs and events for cross-experiment messages.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = root / "first" / "2026-11-03_14-05-09"
+            second = root / "second" / first.name
+            first.mkdir(parents=True)
+            second.mkdir(parents=True)
+            tracker = RunTracker(first)
+            self.addCleanup(tracker.close)
+            other = RunTracker(second)
+            self.addCleanup(other.close)
+            self.assertIsNot(tracker.logger, other.logger)
+            tracker.record("pipeline", "run_started", {"marker": "first_only"})
+            other.record("pipeline", "run_started", {"marker": "second_only"})
+            for directory, own, foreign in (
+                (first, "first_only", "second_only"),
+                (second, "second_only", "first_only"),
+            ):
+                for filename in ("run.log", "events.jsonl"):
+                    text = (directory / filename).read_text(encoding="utf-8")
+                    self.assertIn(own, text)
+                    self.assertNotIn(foreign, text)
+
     def test_runs_log_final_results_without_extra_tensorboard_sessions(self) -> None:
         """Publish aggregate saved scores and a table alongside existing training events.
 
@@ -29,11 +57,13 @@ class TrackingTests(unittest.TestCase):
         self.addCleanup(torch.set_num_threads, threads)
         models = [
             ("ridge", {}),
-            ("gru", {"epochs": 1, "hidden_size": 2}),
-            ("conv_autoencoder", {"epochs": 1, "hidden_channels": 2, "latent_channels": 1}),
-            ("conv_autoencoder", {"epochs": 1, "hidden_channels": 2,
+            ("gru", {"batch_size": 1, "epochs": 1, "hidden_size": 2}),
+            ("conv_autoencoder", {"batch_size": 1, "epochs": 1,
+                                  "hidden_channels": 2, "latent_channels": 1}),
+            ("conv_autoencoder", {"batch_size": 1, "epochs": 1, "hidden_channels": 2,
                                   "latent_channels": 1, "compression": "features"}),
-            ("gru_conv_autoencoder", {"epochs": 1, "hidden_channels": 2, "latent_channels": 1}),
+            ("gru_autoencoder", {"batch_size": 1, "epochs": 1,
+                                 "hidden_channels": 2, "latent_channels": 1}),
         ]
         with tempfile.TemporaryDirectory() as directory:
             for kind, params in models:
@@ -58,6 +88,8 @@ class TrackingTests(unittest.TestCase):
                     self.assertIn("results/summary/text_summary", events.Tags()["tensors"])
                     if kind != "ridge":
                         self.assertIn("pipeline/model/train/batch/loss", events.Tags()["scalars"])
+                        self.assertNotIn("pipeline/model/train/epoch/loss",
+                                         events.Tags()["scalars"])
                         self.assertIn("pipeline/model/validation/epoch/loss",
                                       events.Tags()["scalars"])
                     metrics = json.loads((run.artifact_dir / "metrics.json").read_text())
@@ -109,7 +141,7 @@ class TrackingTests(unittest.TestCase):
             self.assertNotIn("test", markdown)
 
     def test_batches_epochs_and_tensorboard_agree(self) -> None:
-        """Emit exact batch sizes, weighted means and validation loss each epoch.
+        """Keep epoch train means in JSONL and publish batch and validation losses.
 
         Returns:
             None.
@@ -133,16 +165,25 @@ class TrackingTests(unittest.TestCase):
             events = [json.loads(line) for line in (root / "events.jsonl").read_text().splitlines()]
             metrics = [event["data"] for event in events if event["event"] == "metrics"]
             batches = [event for event in metrics if event["batch"] is not None]
-            self.assertEqual([event["step"] for event in batches], [1, 2, 3, 4])
+            self.assertEqual([event["step"] for event in batches], [1, 2])
             for epoch in runner.history_:
                 expected = sum(batch["samples"] * batch["train_loss"] for batch in epoch["batches"])
-                self.assertAlmostEqual(epoch["train_loss"], expected / 5)
+                self.assertAlmostEqual(epoch["train_loss"], expected / 3)
                 actual = [e for e in metrics if e["split"] == "validation" and
                           e["epoch"] == epoch["epoch"]]
                 self.assertEqual(actual[0]["values"]["loss"], epoch["validation_loss"])
+                train = [e for e in metrics if e["split"] == "train" and
+                         e["batch"] is None and e["epoch"] == epoch["epoch"]]
+                self.assertEqual(len(train), 1)
+                self.assertEqual(train[0]["values"]["loss"], epoch["train_loss"])
+                self.assertEqual(train[0]["samples"], 3)
             tensorboard = EventAccumulator(str(root / "tensorboard")).Reload()
+            self.assertNotIn("pipeline/model/train/epoch/loss", tensorboard.Tags()["scalars"])
+            self.assertIn("pipeline/model/validation/epoch/loss", tensorboard.Tags()["scalars"])
+            self.assertNotIn("pipeline/model train epoch=", (root / "run.log").read_text())
+            self.assertIn("pipeline/model validation epoch=", (root / "run.log").read_text())
             scalar = tensorboard.Scalars("pipeline/model/train/batch/loss")
-            self.assertEqual([event.step for event in scalar], [1, 2, 3, 4])
+            self.assertEqual([event.step for event in scalar], [1, 2])
             np.testing.assert_allclose([event.value for event in scalar],
                                        [event["values"]["loss"] for event in batches], rtol=1e-6)
 

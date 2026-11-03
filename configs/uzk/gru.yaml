@@ -1,6 +1,6 @@
 data:
-  features_path: ../datasets/uzk/uzk.csv
-  target_path: ../datasets/uzk/uzk_lab.csv
+  features_path: ../../datasets/uzk/uzk.csv
+  target_path: ../../datasets/uzk/uzk_lab.csv
   target_column: UZK.Q.81AY00108.FINALPOINT
   freq: 1h
 split:
@@ -15,6 +15,11 @@ pipeline:
       - '2022-10-16 23:00:00'
     - - '2023-09-20 00:00:00'
       - '2023-12-31 23:00:00'
+- name: filter
+  type: filter
+  params:
+    filter_freq: 1W
+    max_diff: 30
 - name: scaler
   type: standard
 - name: selector
@@ -36,11 +41,30 @@ pipeline:
 - name: windows
   type: windows
   params:
-    lookback: 12
-- name: model
-  type: ridge
+    lookback: 48
+- name: target_scaler
+  type: target_scale
   params:
-    alpha: 10.0
+    scaler:
+      type: standard
+- name: model
+  type: gru
+  params:
+    # max_grad_norm: 1.0
+    hidden_size: 16
+    num_layers: 1
+    epochs: 200
+    batch_size: 128
+    learning_rate: 0.01
+    min_lr: 0.001
+    weight_decay: 0.05
+    patience: 200
+    checkpoint_start_epoch: 10
+    scheduler: false
+    random_state: 0
+    device: cpu
+    prediction_batch_size: 1024
 run:
+  experiment_name: uzk_gru
   seed: 0
-  output_dir: ../runs
+  output_dir: ../../runs

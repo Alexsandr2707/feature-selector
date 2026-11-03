@@ -90,7 +90,8 @@ class GRURegressor(RegressorMixin, BaseEstimator):
             hidden_size (int): Hidden state width.
             num_layers (int): Number of stacked GRU layers.
             epochs (int): Maximum training epochs.
-            batch_size (int): Training samples per batch.
+            batch_size (int): Training samples per complete batch; must not exceed
+                the number of usable training windows. Incomplete batches are discarded.
             learning_rate (float): Initial AdamW learning rate.
             min_lr (float): Minimum cosine scheduler learning rate.
             weight_decay (float): AdamW weight decay.

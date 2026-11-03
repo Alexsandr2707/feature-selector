@@ -116,8 +116,8 @@ class ConvAutoencoderTests(unittest.TestCase):
         self.assertLess(model.history_[-1]["train_loss"], model.history_[0]["train_loss"])
         self.assertLess(float(np.mean((model.predict(X) - X) ** 2)), 0.1)
         for epoch in model.history_:
-            self.assertEqual([batch["samples"] for batch in epoch["batches"]], [3, 2])
-            expected = sum(b["train_loss"] * b["samples"] for b in epoch["batches"]) / 5
+            self.assertEqual([batch["samples"] for batch in epoch["batches"]], [3])
+            expected = sum(b["train_loss"] * b["samples"] for b in epoch["batches"]) / 3
             self.assertAlmostEqual(epoch["train_loss"], expected)
         json.dumps(model.history_, allow_nan=False)
 
@@ -166,7 +166,7 @@ class ConvAutoencoderTests(unittest.TestCase):
 
         X = self._windows()
         y = X[:, -1, 0]
-        encoder = ConvAutoencoder(hidden_channels=4, latent_channels=2, epochs=1)
+        encoder = ConvAutoencoder(batch_size=1, hidden_channels=4, latent_channels=2, epochs=1)
         pipeline = Pipeline([("encoder", encoder), ("model", WindowRidge())])
         pipeline.fit(X, y)
         self.assertEqual(pipeline.predict(X).shape, (5,))
@@ -192,6 +192,7 @@ class ConvAutoencoderTests(unittest.TestCase):
 
         X = self._windows()
         model = ConvAutoencoder(
+            batch_size=1,
             hidden_channels=4, latent_channels=2, epochs=1, prediction_batch_size=2
         ).fit(X)
         for method, module, values in (
@@ -233,12 +234,12 @@ class ConvAutoencoderTests(unittest.TestCase):
         """
         from feature_selector.models.autoencoder import ConvAutoencoder
 
-        model = ConvAutoencoder(learning_rate=-1, epochs=1)
+        model = ConvAutoencoder(batch_size=1, learning_rate=-1, epochs=1)
         self.assertEqual(model.learning_rate, -1)
         with self.assertRaises(ValueError):
             model.fit(self._windows())
         with self.assertRaises(ValueError):
-            ConvAutoencoder(epochs=0).fit(self._windows())
+            ConvAutoencoder(batch_size=1, epochs=0).fit(self._windows())
 
     def test_invalid_arrays_and_refit(self) -> None:
         """Validate input and latent shapes and replace metadata on repeated fit.
@@ -249,7 +250,7 @@ class ConvAutoencoderTests(unittest.TestCase):
         from feature_selector.models.autoencoder import ConvAutoencoder
 
         X = self._windows()
-        model = ConvAutoencoder(hidden_channels=4, latent_channels=2, epochs=1)
+        model = ConvAutoencoder(batch_size=1, hidden_channels=4, latent_channels=2, epochs=1)
         for values in (
             np.array(1),
             X[0],
@@ -291,7 +292,7 @@ class ConvAutoencoderTests(unittest.TestCase):
 
         X = self._windows()[:, ::-1]
         X.flags.writeable = False
-        model = ConvAutoencoder(hidden_channels=4, latent_channels=2, epochs=1).fit(X)
+        model = ConvAutoencoder(batch_size=1, hidden_channels=4, latent_channels=2, epochs=1).fit(X)
         self.assertEqual(model.predict(X).shape, X.shape)
         result = subprocess.run(
             [

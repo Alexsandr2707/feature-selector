@@ -1,0 +1,44 @@
+data:
+  features_path: ../../../datasets/uzk/uzk.csv
+  freq: 1h
+split:
+  train_fraction: 0.6
+  validation_fraction: 0.2
+pipeline:
+- name: exclusions
+  type: exclude_intervals
+  params:
+    intervals:
+    - - '2022-10-01 00:00:00'
+      - '2022-10-16 23:00:00'
+    - - '2023-09-20 00:00:00'
+      - '2023-12-31 23:00:00'
+- name: scaler
+  type: standard
+- name: windows
+  type: windows
+  params:
+    lookback: 48
+- name: autoencoder
+  type: s4_autoencoder
+  params:
+    state_size: 4
+    latent_channels: 8
+    dropout: 0.0
+    max_grad_norm: 1.0
+    epochs: 200
+    batch_size: 128
+    learning_rate: 0.01
+    ssm_learning_rate: 0.001
+    min_lr: 0.0001
+    weight_decay: 0.05
+    patience: 10
+    scheduler: true
+    random_state: 0
+    device: cpu
+    prediction_batch_size: 1024
+    mode: reconstruct
+run:
+  experiment_name: uzk_s4_autoencoder_pretrain
+  seed: 0
+  output_dir: ../../../runs

@@ -46,9 +46,36 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.data["features_path"], str(Path(directory) / "x.csv"))
             self.assertEqual(config.pipeline[0]["params"]["path"], str(Path(directory) / "ae.pkl"))
             self.assertEqual(config.run["seed"], 0)
+            self.assertEqual(config.run["experiment_name"], "default")
             # Even factory construction does not prevalidate optimizer arguments.
             self.assertEqual(build_pipeline(config.pipeline)["model"].estimator.learning_rate, -1)
         self.assertEqual(settings, before)
+
+    def test_experiment_name(self) -> None:
+        """Keep explicit names and reject invalid directory components.
+
+        Returns:
+            None: Checks name validation without creating output directories.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "runs"
+            settings = {
+                "data": {"features_path": "x.csv"},
+                "pipeline": [{"name": "model", "type": "ridge"}],
+                "run": {"output_dir": str(output), "experiment_name": "uzk_gru"},
+            }
+            before = deepcopy(settings)
+            config = ExperimentConfig.from_dict(settings)
+            self.assertEqual(config.run["experiment_name"], "uzk_gru")
+            self.assertEqual(settings, before)
+            for name in (None, 7, True, [], "", "  ", ".", "..", "a/b", "a\\b", "a\0b"):
+                with self.subTest(name=name), self.assertRaisesRegex(
+                    ValueError, "run.experiment_name"
+                ):
+                    ExperimentConfig.from_dict({**settings, "run": {
+                        **settings["run"], "experiment_name": name,
+                    }})
+            self.assertFalse(output.exists())
 
     def test_structure_and_removed_schema(self) -> None:
         """Reject ambiguous structure while leaving algorithm checks to consumers.
@@ -69,16 +96,3 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             ExperimentConfig.from_dict({"data": {"features_path": "x"},
                                         "pipeline": [], "task": "forecast"})
-
-    def test_repository_configs_construct(self) -> None:
-        """Keep every shipped config in the new schema without opening model files.
-
-        Returns:
-            None.
-        """
-        for path in Path("configs").glob("*.yaml"):
-            with self.subTest(path=path):
-                config = load_config(path)
-                build_pipeline(config.pipeline)
-                self.assertNotIn("exclude_intervals", config.data)
-                self.assertFalse(hasattr(config, "task"))

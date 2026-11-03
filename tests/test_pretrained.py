@@ -55,7 +55,7 @@ class FrozenPipelineTests(unittest.TestCase):
                                      "params": {"path": str(destination)}},
                                     forecast["pipeline"][3],
                                     {"name": "gru", "type": "gru", "params": {
-                                        "epochs": 1, "hidden_size": 2, "batch_size": 8}}]
+                                        "epochs": 1, "hidden_size": 2, "batch_size": 1}}]
             with patch.object(ConvAutoencoder, "fit", side_effect=AssertionError("refit")):
                 run = run_experiment(forecast)
             nested = run.pipeline["encoder"].artifact_.pipeline
@@ -84,7 +84,8 @@ class FrozenPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             spec = write_config(Path(directory), sparse=True)
             spec["pipeline"].insert(3, {"name": "encoder", "type": "conv_autoencoder", "params": {
-                "mode": "encode", "epochs": 1, "hidden_channels": 2, "latent_channels": 1}})
+                "batch_size": 1, "mode": "encode", "epochs": 1,
+                "hidden_channels": 2, "latent_channels": 1}})
             run = run_experiment(spec)
             encoder = run.pipeline["encoder"].estimator
             self.assertEqual(sum(b["samples"] for b in encoder.history_[0]["batches"]), 31)
@@ -102,7 +103,8 @@ class FrozenPipelineTests(unittest.TestCase):
             spec["data"].pop("target_column")
             spec["pipeline"] = [spec["pipeline"][0], spec["pipeline"][2],
                                 {"name": "ae", "type": "conv_autoencoder", "params": {
-                                    "epochs": 1, "hidden_channels": 2, "latent_channels": 1}}]
+                                    "batch_size": 1, "epochs": 1,
+                                    "hidden_channels": 2, "latent_channels": 1}}]
             run = run_experiment(spec)
             a = run.predictions["validation"].query("feature == 'a'")
             np.testing.assert_allclose(a.y_true, np.arange(36, 48), atol=1e-6)
@@ -116,9 +118,9 @@ class FrozenPipelineTests(unittest.TestCase):
             None.
         """
         data = sample_data(30)
-        encoder_spec = {"name": "encoder", "type": "conv_autoencoder", "params": {
+        encoder_spec = {"name": "encoder", "type": "conv_autoencoder", "params": {"batch_size": 1,
             "epochs": 1, "hidden_channels": 2, "latent_channels": 1, "mode": "encode"}}
-        decoder_spec = {"name": "decoder", "type": "conv_autoencoder", "params": {
+        decoder_spec = {"name": "decoder", "type": "conv_autoencoder", "params": {"batch_size": 1,
             "epochs": 1, "hidden_channels": 2, "latent_channels": 1}}
         prefix = [{"name": "scale", "type": "standard"},
                   {"name": "windows", "type": "windows", "params": {"lookback": 4}},
@@ -152,7 +154,7 @@ class FrozenPipelineTests(unittest.TestCase):
         data = sample_data(30)
         pipeline = build_pipeline([
             {"name": "windows", "type": "windows", "params": {"lookback": 4}},
-            {"name": "encoder", "type": "conv_autoencoder", "params": {
+            {"name": "encoder", "type": "conv_autoencoder", "params": {"batch_size": 1,
                 "epochs": 1, "hidden_channels": 2, "latent_channels": 1, "mode": "encode"}},
         ]).fit(data)
         windows = Windows(4).transform(data)

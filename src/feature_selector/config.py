@@ -23,10 +23,13 @@ class ExperimentConfig:
 
         Parameters:
             value (dict[str, Any]): Data sources and a nonempty ordered pipeline list.
+                Optional run.experiment_name must be a nonblank directory name without
+                path separators or null characters, other than '.' and '..'.
             base_dir (str | Path | None): Relative-path base, or the working directory.
 
         Returns:
-            Self: Settings with resolved paths and project defaults.
+            Self: Settings with resolved paths and project defaults, including the
+                experiment name 'default' when omitted.
         """
         config = cls(**deepcopy(value))
 
@@ -86,6 +89,14 @@ class ExperimentConfig:
             names.add(name)
 
         config.run.setdefault("seed", 0)
+        experiment_name = config.run.setdefault("experiment_name", "default")
+        if (
+            not isinstance(experiment_name, str)
+            or not experiment_name.strip()
+            or experiment_name in {".", ".."}
+            or any(character in experiment_name for character in ("/", "\\", "\0"))
+        ):
+            raise ValueError("run.experiment_name must be a nonblank single directory name")
         config.run["output_dir"] = str((base / config.run.get("output_dir", "runs")).resolve())
 
         return config

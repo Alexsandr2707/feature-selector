@@ -43,6 +43,7 @@ class RunTracker:
 
         Parameters:
             directory (Path): Destination directory for append-only events and logs.
+                Its resolved path identifies the logger across experiments.
 
         Returns:
             None.
@@ -51,7 +52,7 @@ class RunTracker:
         self.writer = SummaryWriter(str(directory / "tensorboard"))
         self.metadata: dict[str, dict[str, Any]] = {}
 
-        self.logger = logging.getLogger(f"feature_selector.run.{directory.name}")
+        self.logger = logging.getLogger(f"feature_selector.run.{directory.resolve()}")
         self.logger.setLevel(logging.INFO)
 
         self.handler = logging.FileHandler(directory / "run.log", encoding="utf-8")

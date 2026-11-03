@@ -1,4 +1,4 @@
-"""Configured exclusions, target alignment and causal window construction."""
+"""Configured exclusions, target alignment, window construction and temporal pooling."""
 
 from dataclasses import replace
 
@@ -121,6 +121,50 @@ class AlignTarget(Step):
         return replace(data, y=y, samples=samples)
 
 
+class TemporalPool(Step):
+    """Average consecutive nonoverlapping timestep groups within each window."""
+
+    def __init__(self, factor: int = 4) -> None:
+        """Store the temporal compression factor.
+
+        Parameters:
+            factor (int): Positive number of adjacent timesteps per output point;
+                must divide the input window length.
+
+        Returns:
+            None.
+        """
+        self.factor = factor
+
+    def transform(
+        self,
+        data: PipelineData,
+        *,
+        context: StepContext | None = None,
+    ) -> PipelineData:
+        """Reduce window length without changing sample alignment or feature names.
+
+        Parameters:
+            data (PipelineData): Numeric NumPy windows shaped (samples, timesteps,
+                features), with positive timesteps divisible by factor; samples may be empty.
+            context (StepContext | None): Execution-scoped diagnostics.
+
+        Returns:
+            PipelineData: Mean-pooled windows with timesteps / factor points and the
+                original targets, sample metadata and temporal context.
+        """
+        if isinstance(self.factor, bool) or not isinstance(self.factor, int) or self.factor < 1:
+            raise ValueError("temporal_pool factor must be a positive integer")
+        if not isinstance(data.X, np.ndarray) or data.X.ndim != 3:
+            raise ValueError("temporal_pool requires three-dimensional NumPy windows")
+        samples, timesteps, features = data.X.shape
+        if timesteps < 1 or timesteps % self.factor:
+            raise ValueError("temporal_pool requires positive window length divisible by factor")
+        # Pool inside each window; the original grid still defines forecast timestamps.
+        grouped = data.X.reshape(samples, timesteps // self.factor, self.factor, features)
+        return replace(data, X=grouped.mean(axis=2))
+
+
 class Windows(Step):
     """Collect complete feature histories while preserving missing external targets."""
 
@@ -152,9 +196,11 @@ class Windows(Step):
         """
         if not isinstance(data.X, pd.DataFrame) or self.lookback < 1:
             raise ValueError("windows requires a DataFrame and positive lookback")
+
         times = pd.DatetimeIndex(data.X.index)
-        nanoseconds = pd.DatetimeIndex(times.as_unit("ns")).asi8
+        nanoseconds = pd.DatetimeIndex(times.as_unit("ns")).asi8  # type: ignore
         regular = np.diff(nanoseconds) == data.temporal.frequency.value
+
         if len(times) > 1 and not regular.all():
             raise ValueError("windows requires a regular uncompressed grid")
         values = data.X.to_numpy(dtype=float)
