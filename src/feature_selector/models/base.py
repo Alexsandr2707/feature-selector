@@ -163,7 +163,10 @@ class TorchModelRunner:
         global_step = 0
         for epoch in range(1, epochs + 1):
             training_loss, batches = self._train_epoch(
-                loader, context=context, epoch=epoch, global_step=global_step,
+                loader,
+                context=context,
+                epoch=epoch,
+                global_step=global_step,
                 max_grad_norm=max_grad_norm,
             )
             global_step += len(batches)
@@ -182,17 +185,24 @@ class TorchModelRunner:
             )
 
             # Retain epoch means for analysis without publishing another training curve.
-            context.log_event("metrics", {
-                "values": {"loss": training_loss},
-                "split": "train",
-                "epoch": epoch,
-                "batch": None,
-                "step": None,
-                "samples": sum(batch["samples"] for batch in batches),
-            })
+            context.log_event(
+                "metrics",
+                {
+                    "values": {"loss": training_loss},
+                    "split": "train",
+                    "epoch": epoch,
+                    "batch": None,
+                    "step": None,
+                    "samples": sum(batch["samples"] for batch in batches),
+                },
+            )
             if validation_loss is not None and validation_data is not None:
-                context.log_metrics({"loss": validation_loss}, split="validation", epoch=epoch,
-                                    samples=len(validation_data[0]))
+                context.log_metrics(
+                    {"loss": validation_loss},
+                    split="validation",
+                    epoch=epoch,
+                    samples=len(validation_data[0]),
+                )
                 if epoch >= checkpoint_start_epoch:
                     if validation_loss < best_loss:
                         best_loss = validation_loss
@@ -212,17 +222,26 @@ class TorchModelRunner:
         if best_state is not None:
             self.network.load_state_dict(best_state)
         self.network.eval()
-        context.log_metadata({"best_epoch": self.best_epoch_,
-                              "checkpoint_start_epoch": checkpoint_start_epoch,
-                              "checkpoint_restored": best_state is not None,
-                              "stopping_reason": "early_stopping" if stale_epochs >= patience
-                              else "epochs_completed"})
+        context.log_metadata(
+            {
+                "best_epoch": self.best_epoch_,
+                "checkpoint_start_epoch": checkpoint_start_epoch,
+                "checkpoint_restored": best_state is not None,
+                "stopping_reason": "early_stopping"
+                if stale_epochs >= patience
+                else "epochs_completed",
+            }
+        )
 
         return self
 
     def _train_epoch(
-        self, loader: DataLoader[Any], *, context: StepContext | None = None,
-        epoch: int = 1, global_step: int = 0,
+        self,
+        loader: DataLoader[Any],
+        *,
+        context: StepContext | None = None,
+        epoch: int = 1,
+        global_step: int = 0,
         max_grad_norm: float | None = None,
     ) -> tuple[float, list[BatchLoss]]:
         """Update weights and collect batch losses.
@@ -272,9 +291,14 @@ class TorchModelRunner:
                 }
             )
 
-            context.log_metrics({"loss": batch_loss, "learning_rate": learning_rate},
-                                split="train", epoch=epoch, batch=batch_number,
-                                step=global_step + batch_number, samples=len(batch_x))
+            context.log_metrics(
+                {"loss": batch_loss, "learning_rate": learning_rate},
+                split="train",
+                epoch=epoch,
+                batch=batch_number,
+                step=global_step + batch_number,
+                samples=len(batch_x),
+            )
             total_loss += batch_loss * len(batch_x)
             sample_count += len(batch_x)
 

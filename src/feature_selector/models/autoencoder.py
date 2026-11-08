@@ -525,7 +525,7 @@ class ConvAutoencoder(BaseEstimator):
         for start in range(0, len(X), size):
             values = torch.as_tensor(X[start : start + size], device=self.runner_.device)
             predictions.append(operation(values).cpu().numpy())
-        return np.concatenate(predictions)
+        return np.concatenate(predictions)  # TODO: fix bad typification.
 
     def encode(self, X: NDArray[Any]) -> WindowArray:
         """Encode windows using the fitted compression architecture.
