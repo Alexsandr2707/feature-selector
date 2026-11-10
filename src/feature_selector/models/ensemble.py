@@ -111,6 +111,7 @@ class GRUEnsembleRegressor(RegressorMixin, BaseEstimator):
                 "validation_samples": len(valid_X),
             }
         )
+
         estimators: list[GRURegressor] = []
         histories: list[MemberHistory] = []
         predictions: list[NDArray[Any]] = []
@@ -126,12 +127,14 @@ class GRUEnsembleRegressor(RegressorMixin, BaseEstimator):
                     "validation_samples": len(valid_X),
                 }
             )
+
             estimator.fit(
                 X,
                 y,
                 validation_data=validation_data,
                 context=member_context,
             )
+
             estimators.append(estimator)
             predictions.append(estimator.predict(valid_X))
             histories.append(

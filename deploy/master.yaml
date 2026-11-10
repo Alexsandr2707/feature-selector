@@ -1,0 +1,8 @@
+host: 0.0.0.0
+port: 8000
+state_dir: /state
+storage_url: http://storage:8000/api/v1
+collector_url: http://collector:8000/api/v1
+ml_url: http://ml:8000/api/v1
+timeout: 60
+batch_size: 1000

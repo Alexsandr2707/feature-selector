@@ -83,6 +83,7 @@ class ConfiguredPipeline(BaseEstimator):
             method = getattr(step, operation, None)
             if not callable(method):
                 raise TypeError(f"Step must provide {operation}")
+
             result = (
                 method(data, validation, context=context)
                 if operation == "fit"
@@ -93,6 +94,7 @@ class ConfiguredPipeline(BaseEstimator):
                 or (result.y is not None and len(result.y) != len(result.X))
             ):
                 raise ValueError("Step must keep X, y and sample metadata aligned")
+
             shape = (
                 result.X.shape
                 if isinstance(result, PipelineData)
@@ -124,6 +126,7 @@ class ConfiguredPipeline(BaseEstimator):
             "validation_start": str(data.temporal.boundaries.validation_start),
             "test_start": str(data.temporal.boundaries.test_start),
         }
+
         for index, (name, step) in enumerate(self.steps):
             train, validation = data.split("train"), data.split("validation")
             self._call(
@@ -135,6 +138,7 @@ class ConfiguredPipeline(BaseEstimator):
             )
             if index < len(self.steps) - 1:
                 data = self._call(step, "transform", data, context.child(name, "transform"))
+
         self.fitted_ = True
         return self
 
@@ -159,6 +163,7 @@ class ConfiguredPipeline(BaseEstimator):
         context = context or StepContext(operation="transform")
         names = [name for name, _ in self.steps]
         stop = names.index(through) + 1 if through is not None else len(names)
+
         for name, step in self.steps[:stop]:
             data = self._call(step, "transform", data, context.child(name, "transform"))
         return data
@@ -195,6 +200,7 @@ class ConfiguredPipeline(BaseEstimator):
             PredictionData: Restored predictions, references and temporal metadata.
         """
         self._check_input(data)
+
         # Lossy transforms cannot recover the original reference by inversion.
         reference = replace(data, X=data.X.copy(), samples=data.samples.copy())
         context = context or StepContext(operation="predict")
@@ -202,8 +208,10 @@ class ConfiguredPipeline(BaseEstimator):
             data = self._call(step, "transform", data, context.child(name, "transform"))
         if splits is not None:
             data = data.select(data.samples["split"].isin(splits).to_numpy())
+
         name, model = self.steps[-1]
         result = self._call(model, "predict", data, context.child(name, "predict"))
+
         for _, step in reversed(self.steps[:-1]):
             result = step.inverse_prediction(result)
         if result.kind == "features":
@@ -230,6 +238,7 @@ class ConfiguredPipeline(BaseEstimator):
         columns = pd.Index(source.feature_names).get_indexer(pd.Index(prediction.feature_names))
         if (positions < 0).any() or (columns < 0).any():
             raise ValueError("Reconstruction references must match original times and features")
+
         truth = np.asarray(source.X)[positions][..., columns]
         if truth.ndim == 3 and prediction.values.ndim == 2:
             truth = truth[:, -1, :]
@@ -256,6 +265,7 @@ class ConfiguredPipeline(BaseEstimator):
         """
         names = [name for name, _ in self.steps]
         stop = names.index(through) + 1
+
         exported = deepcopy(self)
         exported.steps = exported.steps[:stop]
         terminal = exported.steps[-1][1]
@@ -264,9 +274,11 @@ class ConfiguredPipeline(BaseEstimator):
             estimator.set_params(mode=mode)
         if not callable(getattr(estimator, "transform", None)):
             raise TypeError("Exported terminal component must provide transform")
+
         artifact = TransformArtifact(
             exported, self.input_names_, self.frequency_ns_, dict(self.provenance_)
         )
+
         destination = Path(path).resolve()
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("wb") as stream:

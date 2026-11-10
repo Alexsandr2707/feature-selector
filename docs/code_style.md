@@ -1,46 +1,43 @@
-# Стиль кода проекта
+# Project code style
 
-Правила относятся к собственному Python-коду проекта, включая новые и
-переписываемые вспомогательные функции. Сначала описывается контракт функции,
-затем реализация. При рефакторинге сохраняется поведение; исправления ошибок
-обозначаются отдельно.
+These rules apply to project-owned Python code, including new and rewritten
+helper functions. Describe a function's contract before implementing it.
+Preserve behavior during refactoring and identify bug fixes separately.
 
-`src/feature_selector/models/s4.py` — код сторонней библиотеки. Он сохраняется
-без изменений; требования к стилю, аннотациям и docstring проекта на него
-не распространяются. Интеграция S4 в остальных модулях следует общим правилам.
+`src/feature_selector/models/s4.py` is third-party library code and remains
+unchanged. Project requirements for style, annotations and docstrings do not
+apply to that file. S4 integration elsewhere follows the general rules.
 
-## Контракты, документация и типы
+## Contracts, documentation and types
 
-- Используй docstring по образцу `build_pipeline` в `src/feature_selector/factory.py`:
-  краткое описание, затем `Parameters:` и `Returns:` в этом порядке.
-  Формат описаний сохраняй как в Google-style: `имя (тип): описание`.
-  Раздел `Parameters:` пропускай, если у функции нет аргументов кроме `self`/`cls`.
-  Раздел `Raises:` не добавляй.
-- В `Parameters:` указывай имя, тип в скобках и назначение каждого аргумента.
-  Перечисляй допустимые формы входа и существенные ограничения.
-- В `Returns:` указывай тип и смысл результата, включая `None`, если функция
-  ничего не возвращает.
-- Пиши документацию коротко и понятно: назначение, существенные ограничения
-  аргументов и результат. Не повторяй сигнатуру, очевидные действия кода
-  и значения по умолчанию, уже видимые в сигнатуре.
-- Указывай изменение входных объектов и другие существенные побочные эффекты,
-  когда они есть. Не добавляй очевидные гарантии вроде «inputs are not modified»,
-  «without modifying self» или «parameters are stored unchanged».
-  Клонирование и особые случаи поясняй, только если это важно для использования.
-  Не оставляй шаблонов вроде `_summary_` или `_type_`.
-- Добавляй аннотации аргументов и возвращаемого значения ко всем новым
-  и переписываемым функциям, включая внутренние вспомогательные функции.
-- Используй конкретные типы, объединения через `|`, `Literal` для специальных
-  строк и типизированные коллекции там, где это помогает понять контракт.
-  Для повторяющихся сложных типов вводи понятные псевдонимы.
-- Используй `Any`, если значение намеренно остаётся непроверенным до следующего
-  этапа или конкретизация динамических данных неоправданно усложняет код.
-  Аннотации не заменяют проверку входных данных во время выполнения.
-- Для динамически доступных методов, которые Pylance не видит в объявленном
-  типе объекта, получай метод через `getattr(obj, "method", None)` в локальную
-  переменную, проверяй её через `callable` и затем вызывай эту переменную.
-  Образец вызова динамического метода из `TransformerStep.fit`
-  в `src/feature_selector/pipeline/adapters.py`:
+- Follow the docstring pattern in `build_pipeline` in `src/feature_selector/factory.py`:
+  a short description, followed by `Parameters:` and `Returns:` in that order.
+  Keep the Google-style entry format: `name (type): description`.
+  Omit `Parameters:` when there are no arguments other than `self`/`cls`.
+  Do not add a `Raises:` section.
+- In `Parameters:`, state each argument's name, type in parentheses and purpose.
+  Describe accepted input shapes and relevant constraints.
+- In `Returns:`, state the result type and meaning, including `None` for
+  functions that return no value.
+- Keep documentation brief and clear: purpose, relevant argument constraints
+  and result. Do not repeat the signature, obvious operations or default values
+  already visible in the signature.
+- Document input mutations and other significant side effects when present.
+  Avoid obvious guarantees such as "inputs are not modified", "without modifying
+  self" or "parameters are stored unchanged". Explain cloning and special cases
+  only when relevant to usage. Do not leave `_summary_` or `_type_` placeholders.
+- Annotate arguments and return values of every new or rewritten function,
+  including internal helpers.
+- Use concrete types, `|` unions, `Literal` for special strings and typed
+  collections when they clarify the contract. Introduce readable aliases for
+  recurring complex types.
+- Use `Any` when a value intentionally remains unchecked until a later stage,
+  or specifying dynamic data types would add unjustified complexity.
+  Annotations do not replace runtime input validation.
+- For dynamically available methods that Pylance cannot see on a declared type,
+  retrieve the method with `getattr(obj, "method", None)` into a local variable,
+  check it with `callable` and call that variable. Example from
+  `TransformerStep.fit` in `src/feature_selector/pipeline/adapters.py`:
 
   ```python
   fit = getattr(self.estimator, "fit", None)
@@ -49,43 +46,44 @@
   fit(selected.X, selected.y)
   ```
 
-  Проверяй доступность самого вызываемого метода, а не связанного атрибута
-  вроде `_parameter_constraints`. Для таких вызовов используй этот подход
-  вместо `hasattr` с последующим прямым обращением к методу, `type: ignore`
-  или приведения объекта к `Any`: он позволяет Pylance корректно обработать
-  вызов и проверяет во время выполнения, что полученный атрибут вызываем.
-  Не добавляй Protocol только ради вызовов на границе динамической фабрики.
-- Пиши docstring и комментарии на английском, сохраняя язык исходного кода.
-- Внутри функций добавляй короткие комментарии к неочевидным действиям:
-  объясняй их цель, ограничения библиотеки или причину выбранного решения.
-  Не пересказывай очевидные условия, присваивания и вызовы.
-- Используй понятные имена и небольшие функции с одной задачей. Выделяй
-  вспомогательные функции или классы, если это делает основной код понятнее.
+  Check the callable method itself, rather than a related attribute such as
+  `_parameter_constraints`. Use this approach instead of `hasattr` followed by
+  direct method access, `type: ignore` or casting the object to `Any`: it lets
+  Pylance handle the call and verifies at runtime that the attribute is callable.
+  Do not add a Protocol solely for calls at a dynamic factory boundary.
+- Write docstrings and comments in English, matching the source code language.
+- Inside functions, add short comments for non-obvious operations: explain
+  their purpose, library limitations or the reason for a particular choice.
+  Do not restate obvious conditions, assignments or calls.
+- Use clear names and small functions with one responsibility. Extract helpers
+  or classes when they make the main code easier to understand.
 
-## Дополнительные соглашения
+## Additional conventions
 
-- Примеры согласованного стиля внутри `src/feature_selector/`:
+- Examples of the agreed style under `src/feature_selector/` include
   `factory.py`, `data.py`, `temporal.py`, `evaluation.py`, `artifacts.py`,
-  `config.py`, `experiment.py`, `cli.py`, `models/` и `selectors/selection.py`.
-- Максимальная длина строки — 100 символов, согласно `[tool.ruff]` в
-  `pyproject.toml`. Не запускай массовое форматирование всего проекта.
-- Типы общих атрибутов, создаваемых наследниками в `fit`, объявляй в базовом
-  классе без начальных значений. Не инициализируй обученные атрибуты пустыми
-  значениями в конструкторе: это может нарушить проверку `check_is_fitted`.
-- Сохраняй sklearn-интерфейс: конструктор хранит параметры, `fit` возвращает
-  `self`, обученные атрибуты заканчиваются на `_`, клонирование остаётся рабочим.
-- Собственные проверки параметров класса можно выделять в `_validate_params`,
-  вызываемый самим классом при использовании. Фабрика создаёт компоненты и не
-  вызывает `_validate_params` заранее. Проверки данных выполняются на границе
-  потребляющего их шага или алгоритма. Ограничения sklearn/PyTorch оставляй
-  библиотеке; не дублируй проверки и полные сканирования массивов между шагами.
-- Для исправления ошибки Pylance предпочитай явный подходящий тип и проверку
-  типов, а не подавление ошибки. Например, перед `Index.get_indexer` создавай
-  `pd.Index` из запрошенных имён. `cast` допустим только для уже обоснованного
-  типа, не как замена проверке данных.
+  `config.py`, `experiment.py`, `cli.py`, `models/` and `selectors/selection.py`.
+- The maximum line length is 100 characters, as set in `[tool.ruff]` in
+  `pyproject.toml`. Do not run bulk formatting across the entire project.
+- Separate function bodies into logical blocks with blank lines: data
+  preparation, validation, main processing and result construction. Choose
+  boundaries by meaning and keep closely related statements together.
+- Declare the types of shared attributes created by subclasses in `fit` on the
+  base class without initial values. Do not initialize fitted attributes with
+  empty values in the constructor: this can break `check_is_fitted`.
+- Preserve the sklearn interface: constructors store parameters, `fit` returns
+  `self`, fitted attributes end in `_` and cloning remains supported.
+- Class-specific parameter checks may be extracted into `_validate_params`,
+  called by the class itself when used. The factory constructs components and
+  does not call `_validate_params` in advance. Validate data at the consuming
+  step or algorithm boundary. Leave sklearn/PyTorch constraints to those
+  libraries; do not duplicate checks and full-array scans between steps.
+- Fix Pylance errors with an appropriate explicit type and type checks rather
+  than suppression. For example, construct a `pd.Index` from requested names
+  before `Index.get_indexer`. Use `cast` only for an already justified type,
+  never as a substitute for data validation.
 
-
-## Пример docstring
+## Docstring example
 
 ```python
 def get_selected_indices(self) -> ColumnIndices:
@@ -97,5 +95,5 @@ def get_selected_indices(self) -> ColumnIndices:
     return self.selected_indices_.copy()
 ```
 
-Архитектурные контракты описаны в [architecture.md](architecture.md),
-установка и использование — в [README.md](../README.md).
+Architectural contracts are described in [architecture.md](architecture.md);
+installation and usage are covered in [README.md](../README.md).

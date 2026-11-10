@@ -72,6 +72,7 @@ class TargetFilter(Step):
             .first()
             .interpolate(method="nearest")
         )
+
         # Resampling extends to period labels; only mask the original target positions.
         mask = changes.gt(self.max_diff).reindex(times, fill_value=False).to_numpy(dtype=bool)
         targets: Targets
@@ -84,12 +85,14 @@ class TargetFilter(Step):
         if context:
             removed = mask & values.notna().to_numpy()
             labels = data.samples["split"].to_numpy()
-            context.log_metadata({
-                "filter_freq": self.filter_freq,
-                "max_diff": self.max_diff,
-                "masked_targets": {
-                    split: int(np.count_nonzero(removed & (labels == split)))
-                    for split in ("train", "validation", "test")
-                },
-            })
+            context.log_metadata(
+                {
+                    "filter_freq": self.filter_freq,
+                    "max_diff": self.max_diff,
+                    "masked_targets": {
+                        split: int(np.count_nonzero(removed & (labels == split)))
+                        for split in ("train", "validation", "test")
+                    },
+                }
+            )
         return replace(data, y=targets)

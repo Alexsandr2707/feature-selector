@@ -175,6 +175,7 @@ def build_pipeline(specs: list[dict[str, Any] | tuple[str, Step]]) -> Configured
         name = spec[0] if isinstance(spec, tuple) else spec["name"]
         if not isinstance(name, str) or not name or "/" in name or name in names:
             raise ValueError(f"Invalid or duplicate pipeline name: {name!r}")
+
         try:
             if isinstance(spec, tuple):
                 step = clone(spec[1])
@@ -187,8 +188,10 @@ def build_pipeline(specs: list[dict[str, Any] | tuple[str, Step]]) -> Configured
         except Exception as exc:
             exc.add_note(f"Constructing pipeline step {name!r}")
             raise
+
         steps.append((name, step))
         names.add(name)
+
     if not steps or not callable(getattr(steps[-1][1], "predict", None)):
         raise ValueError("Pipeline must end in a step providing predict")
     return ConfiguredPipeline(steps)

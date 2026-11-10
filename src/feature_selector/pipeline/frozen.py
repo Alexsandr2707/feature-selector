@@ -45,9 +45,11 @@ class FrozenPipeline(Step):
         """
         with Path(self.path).open("rb") as stream:
             artifact = pickle.load(stream)
+
         if not isinstance(artifact, TransformArtifact) or artifact.format_version != 1:
             raise ValueError("Expected a current exported transform artifact")
         artifact.pipeline._check_input(train)
+
         self.artifact_ = artifact
         if context:
             context.log_metadata(

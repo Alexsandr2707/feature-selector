@@ -76,6 +76,7 @@ class PipelineData:
             else (np.zeros(0, dtype=bool))
         )
         valid &= ~self.samples["excluded"].to_numpy(dtype=bool)
+
         if require_y:
             if self.y is None:
                 return np.zeros(len(values), dtype=bool)

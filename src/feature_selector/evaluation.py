@@ -184,6 +184,7 @@ def prediction_report(prediction: "PredictionData", mask: "NDArray[np.bool_]") -
                 "y_pred": values,
             }
         )
+
     if values.ndim == 3 and prediction.kind == "features":
         values, truth = values[:, -1, :], truth[:, -1, :]
     width = int(np.prod(values.shape[1:]))
@@ -198,6 +199,7 @@ def prediction_report(prediction: "PredictionData", mask: "NDArray[np.bool_]") -
             "y_pred": values.ravel(),
         }
     )
+
     if values.ndim == 3:
         report["timestep"] = np.tile(
             np.repeat(np.arange(values.shape[1]), values.shape[2]), len(values)
@@ -216,9 +218,11 @@ def report_metrics(report: pd.DataFrame) -> dict[str, Any]:
     """
     if not np.isfinite(report["y_pred"]).all():
         raise ValueError("Predictions must contain finite values")
+
     observed = report.loc[report["y_true"].notna()]
     if observed.empty:
         return {}
+
     if "feature" in observed:
         return dict(reconstruction_metrics(observed))
     return dict(regression_metrics(observed["y_true"], observed["y_pred"]))

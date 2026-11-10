@@ -29,6 +29,7 @@ def json_value(value: Any) -> Any:
         from math import isfinite
 
         return value if isfinite(value) else None
+
     tolist = getattr(value, "tolist", None)
     if callable(tolist):
         return json_value(tolist())
@@ -78,6 +79,7 @@ class RunTracker:
         }
         self.events.write(json.dumps(record, allow_nan=False) + "\n")
         self.events.flush()
+
         lifecycle = {"started", "completed", "failed", "run_started", "run_completed", "run_failed"}
         if event in lifecycle:
             self.logger.info("%s %s %s", path, event, json_value(values))

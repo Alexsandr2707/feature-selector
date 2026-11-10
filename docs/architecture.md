@@ -5,6 +5,14 @@ Experiment hyperparameters and optional step choices belong to configurations,
 not to the architectural contract. Code style is documented separately in
 [code_style.md](code_style.md).
 
+## Service architecture
+
+The five-container application wraps the numerical package without changing its
+local CLI/notebook contract. Service responsibilities, object publication,
+job lifecycle, API, deployment and limits are documented in
+[services.md](services.md#service-architecture). Source preparation and operator
+instructions belong to the same service guide.
+
 ## Dependencies
 
 ```mermaid
@@ -22,7 +30,7 @@ flowchart TD
     Pipeline --> Prediction[PredictionData]
     Prediction --> Evaluation[Reports and metrics]
     Evaluation --> Results[Run results]
-    Results --> Storage[Artifacts]
+    Results --> Storage[Local artifacts]
     Results --> Plots[Visualization]
     Pipeline --> Context[StepContext]
     Steps --> Context
@@ -73,13 +81,30 @@ import concrete models. Data preparation and temporal steps own grid and split p
 
 Before windowing, an example is a regular-grid row. Afterwards, it is a window.
 Any step changing order/count updates X, y and sample metadata together. Do not
-perform full validation whenever constructing this container.
+perform full validation whenever constructing this container. Loading and
+preparation remain in memory; lazy loading is not implemented.
 
 `PredictionData` contains predicted values, optional reference values, corresponding
 sample metadata, feature names and output meaning (target, features or latent).
 The model determines its reference: regressors use y, reconstruction uses X.
 Evaluation consumes this result without a global task switch. Without a reference,
 produce predictions but no metrics.
+
+## Selector contract
+
+Selectors accept DataFrames and two-dimensional NumPy arrays. `selected_indices_`
+is the canonical selection in output order; `selected_features_` is retained for
+compatibility. `get_selected_indices()` returns a copy of positions, while
+`get_selection_mask()` follows the input column order.
+
+`StaticSelector` accepts exactly one mode: `columns` contains DataFrame labels,
+`indices` contains positions. Numeric labels must not be treated as positions.
+Transform preserves the input container unless `set_output` explicitly selects
+another output format. It checks feature count and available names/order and never
+removes rows. Incomplete feature/target pairs are filtered only during fit.
+
+`feature_names_in_` exists only for DataFrames with string column names. Default
+NumPy output names are `x0`, `x1`, etc. Repeated fit clears obsolete metadata.
 
 ## Step and pipeline contract
 
@@ -89,7 +114,9 @@ fit(train: PipelineData, validation: PipelineData | None = None,
 transform(data: PipelineData, *, context: StepContext | None = None) -> PipelineData
 ```
 
-Stateless fit returns self. sklearn algorithms use small adapters. A final model
+Stateless fit returns self. sklearn algorithms use small adapters. `ModelStep`
+forwards `validation_data` and `context` only when the estimator fit signature
+explicitly declares them. Test is never passed to fit. A final model
 also exposes predict returning PredictionData. The executor calls the same methods
 regardless of the concrete transformation class.
 
@@ -115,6 +142,9 @@ observations from a snapshot of the original input using origin times and featur
 names. Do not decode a latent reference: a lossy encoder would change the ground truth.
 
 ## Temporal processing and training semantics
+
+`TorchModelRunner` in `models/base.py` owns training and prediction. GRU retains
+its sklearn-compatible wrapper. Prediction batch size is configurable.
 
 The runner always sets `drop_last=True` on its training DataLoader: the final
 incomplete batch is discarded after each epoch's shuffle for all PyTorch models.
@@ -194,8 +224,7 @@ run:
 Export a fitted prefix and AE encoding operation:
 
 ```python
-run.pipeline.export_transform('runs/uzk_encoder.pkl',
-                              through='autoencoder', mode='encode')
+run.pipeline.export_transform("runs/uzk_encoder.pkl", through="autoencoder", mode="encode")
 ```
 
 Change the exported copy's mode without changing the source model. The export
@@ -371,22 +400,6 @@ Keep checks preventing silent errors (schema order, alignment, shape broadcastin
 empty training loops). Remove repeated exhaustive type/range checks and repeated
 whole-array scans after every step.
 
-## Acceptance checks
-
-- Known windows/horizons; gaps, intervals and split-boundary history.
-- Missing y does not shrink AE training; supervised models select observed targets.
-- Scaler-before-alignment fits on original train rows, excluding validation/test from scaler.fit.
-- One event per completed train batch and validation metric per applicable epoch.
-- Batch and validation losses agree across history, JSONL and TensorBoard;
-  weighted train epoch means agree across history and JSONL and are absent from TensorBoard.
-- Interrupted fit retains readable events; scoped metadata cannot overwrite siblings.
-- Frozen preprocessing/weights do not update; reload works without source export.
-- Original-unit predictions and reconstruction references survive save/load.
-- User-defined step works without changes to executor/config logic.
-- Validation-disabled training keeps final weights and no selected epoch.
-- Full unittest, short CPU Ridge/GRU/AE runs, AE/GRU notebook execution, lockfile
-  consistency, wheel contents and imports from the built package.
-
 ## Training telemetry and final reports
 
 TensorBoard contains train batch losses and learning rates, plus validation epoch losses.
@@ -508,47 +521,9 @@ and predictions before drawing each curve. Lines connect the remaining points ac
 gaps; plotting does not fill values in reports or metrics. Ground truth uses a higher
 z-order than predictions so observations remain visible when curves overlap.
 
-## Configuration and notebook layout
+## Development and verification
 
-Configurations live under `configs/`; notebooks are grouped under `notebooks/`.
-`pretrain` identifies autoencoder training and export; other filenames identify
-forecasting scenarios. `configs/example.yaml` demonstrates the configuration schema.
-Experiment settings and exported artifact paths can change independently of this document.
-
-YAML paths are relative to the configuration file. Notebook setup finds the project
-root among the working directory and its parents using `pyproject.toml` and
-`src/feature_selector`, then changes into that root. CLI examples assume the project
-root as the working directory.
-
-## Verification
-
-Verification results are recorded here with their date and scope. GPU, Pylance,
-full notebook execution and real-data training require separate checks.
-
-On 2026-11-03, documentation and test independence from experimental YAMLs were
-checked on CPU. The full unittest suite passed all 144 tests in 16.427 seconds.
-Repository-config assertions were removed; S4 tied dropout is tested with explicit
-estimator parameters, and pooling behavior retains numerical and integration coverage.
-No source algorithms, third-party S4 code or experimental configurations were changed.
-`pytorch-lightning` was restored because the unmodified S4 module imports it.
-`uv lock --check`, `uv build` and `git diff --check` passed. The extracted wheel
-passed isolated CLI import/help and a one-epoch S4 fit/predict smoke check on CPU.
-Wheel contents include S4 and exclude tests, datasets and notebooks. GPU, Pylance,
-full notebook execution and real-data training were not run.
-
-On 2026-11-03, repository workflow changes were checked: the local branch is `dev`,
-and Git clean/diff filters use the nbstripout development dependency. An alternate
-Git index staged all 11 notebooks: the Git blobs contained no outputs or execution
-counts, while SHA-256 checks confirmed every working notebook remained byte-identical
-with all 133 outputs retained. Notebook cell sources/types and the real staging
-index were unchanged. Working notebooks total 5,304,480 bytes; filtered blobs total
-121,327 bytes. Setup is documented in notebooks.md; code style is in code_style.md.
-`uv lock --check`, `uv build` and `git diff --check` passed. Runtime Python code was
-not changed; the unittest suite was not repeated for these workflow/documentation edits.
-
-On 2026-11-03, the final pre-commit check passed all 144 CPU tests in 13.959 seconds;
-`git diff --check` passed and the notebook filter was installed on local branch dev.
-One repository completeness issue remains: scripts/dataset1.py is ignored and
-untracked, although the DataSet1 notebook imports it and README commands require it.
-Tests currently pass using that local file; the tracked project alone does not
-supply it to a fresh clone. No commit or history rewrite was performed.
+Extension instructions and acceptance checks live in [development.md](development.md).
+Configuration examples, model usage and notebook setup are in
+[experiments.md](experiments.md). Git notebook filters are described in
+[notebooks.md](notebooks.md).

@@ -31,6 +31,7 @@ htmlcov/
 /.agents/
 /.codex/
 /.aws/
+/service-state/
 .DS_Store
 
 # AGENT files

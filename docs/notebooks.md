@@ -1,13 +1,13 @@
-# Ноутбуки в Git
+# Notebooks in Git
 
-Рабочие `.ipynb` сохраняют графики, таблицы и результаты выполнения.
-При `git add` фильтр `nbstripout` передаёт в Git копию без outputs и номеров
-выполнения. Файлы на диске не перезаписываются. Diff также показывает очищенное
-представление, чтобы результаты вычислений не мешали просматривать изменения кода.
+Working `.ipynb` files retain plots, tables and execution results. During
+`git add`, the `nbstripout` filter passes a copy without outputs or execution
+counts to Git. Files on disk are not overwritten. Diffs also use the stripped
+representation so computed results do not obscure code changes.
 
-## Настройка после клонирования
+## Setup after cloning
 
-Из корня проекта:
+From the repository root:
 
 ```bash
 uv sync
@@ -15,26 +15,26 @@ uv run nbstripout --install
 uv run nbstripout --status
 ```
 
-`nbstripout` входит в dev-зависимости. Правила для `.ipynb` хранятся в
-`.gitattributes`; команды фильтра настраиваются локально в `.git/config`.
-Git не переносит эти команды при клонировании, поэтому установка нужна в каждом
-клоне. Настроенный фильтр обязателен: ошибка его выполнения прерывает добавление
-ноутбука вместо сохранения неочищенной копии.
+`nbstripout` is a development dependency. Rules for `.ipynb` files live in
+`.gitattributes`; filter commands are configured locally in `.git/config`.
+Git does not copy these commands when cloning, so install the filter in each
+clone. The configured filter is required: failure stops notebook staging
+instead of storing an unstripped copy.
 
-После установки используйте обычные команды Git:
+After installation, use regular Git commands:
 
 ```bash
 git add notebooks/
 git diff --cached --stat
 ```
 
-Проверить копию конкретного ноутбука в индексе можно командой
-`git show :notebooks/uzk/gru.ipynb`. В её ячейках `outputs` будет пустым,
-а `execution_count` — `null`; открытый локальный ноутбук сохранит результаты.
+Inspect a particular staged notebook with `git show :notebooks/uzk/gru.ipynb`.
+Its cells will have empty `outputs` and `null` `execution_count`; the local
+notebook will retain its results.
 
-Не запускайте `nbstripout file.ipynb` для рабочих файлов: такой вызов очищает
-их на месте. Для сохранения локальных графиков нужен именно Git-фильтр.
-Фильтр применяется к новым добавлениям и не удаляет outputs из старых коммитов.
-В новом клоне графиков не будет: они остаются в рабочей копии автора.
+Do not run `nbstripout file.ipynb` on working files: that command strips them
+in place. Use the Git filter to preserve local plots. The filter applies to
+newly staged content and does not remove outputs from earlier commits.
+A fresh clone will not contain plots: they remain in the author's working copy.
 
-Подробности: [документация nbstripout](https://github.com/kynan/nbstripout).
+See the [nbstripout documentation](https://github.com/kynan/nbstripout) for details.

@@ -1,0 +1,14 @@
+.git
+.venv
+datasets
+data
+runs
+tmp
+dist
+build
+notebooks
+*.ipynb
+**/__pycache__
+.agents
+.aws
+.codex

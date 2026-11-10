@@ -53,10 +53,12 @@ class TransformerStep(Step):
             else (~train.samples["excluded"].to_numpy(dtype=bool))
         )
         selected = train.select(mask)
+
         fit = getattr(self.estimator, "fit", None)
         if not callable(fit):
             raise TypeError("Transformer must provide fit")
         fit(selected.X, selected.y)
+
         self.input_names_ = train.feature_names
         indices = getattr(self.estimator, "get_selected_indices", None)
         if context and callable(indices):
@@ -83,6 +85,7 @@ class TransformerStep(Step):
         transform = getattr(self.estimator, "transform", None)
         if not callable(transform):
             raise TypeError("Transformer must provide transform")
+
         values = transform(data.X)
         if not isinstance(values, (pd.DataFrame, np.ndarray)):
             raise TypeError("Transformer must return a DataFrame or NumPy array")
@@ -93,6 +96,7 @@ class TransformerStep(Step):
             names = tuple(np.asarray(get_names(list(names)), dtype=object))
         elif values.shape[-1] != len(names):
             names = tuple(f"x{i}" for i in range(values.shape[-1]))
+
         if isinstance(data.X, pd.DataFrame) and not isinstance(values, pd.DataFrame):
             values = pd.DataFrame(values, index=data.X.index, columns=list(names))
         return replace(data, X=values, feature_names=names)
@@ -111,6 +115,7 @@ class TransformerStep(Step):
         inverse = getattr(self.estimator, "inverse_transform", None)
         if not callable(inverse):
             raise TypeError("Reconstruction reporting requires reversible feature preprocessing")
+
         shape = prediction.values.shape
         values = np.asarray(inverse(prediction.values.reshape(-1, shape[-1]))).reshape(shape)
         truth = (
@@ -153,6 +158,7 @@ class TargetScale(Step):
             Self: Fitted target transformer.
         """
         selected = train.select(train.valid(require_y=True))
+
         fit = getattr(self.scaler, "fit", None)
         if not callable(fit):
             raise TypeError("Target scaler must provide fit")
@@ -176,11 +182,14 @@ class TargetScale(Step):
         """
         if data.y is None:
             return data
+
         values = np.array(data.y, dtype=float, copy=True)
         observed = np.isfinite(values)
+
         transform = getattr(self.scaler, "transform", None)
         if not callable(transform):
             raise TypeError("Target scaler must provide transform")
+
         if observed.any():
             values[observed] = np.asarray(transform(values[observed, None])).ravel()
         return replace(data, y=values)
@@ -196,6 +205,7 @@ class TargetScale(Step):
         """
         if prediction.kind != "target":
             return prediction
+
         inverse = getattr(self.scaler, "inverse_transform", None)
         if not callable(inverse):
             raise TypeError("Target scaler must provide inverse_transform")
@@ -245,11 +255,13 @@ class ModelStep(Step):
         selected = train.select(train.valid(require_y=not self.reconstructs))
         if not len(selected.X):
             raise ValueError("No usable train examples for model")
+
         valid = None
         if validation is not None:
             valid = validation.select(validation.valid(require_y=not self.reconstructs))
             if not len(valid.X):
                 raise ValueError("No usable validation examples for model")
+
         fit = getattr(self.estimator, "fit", None)
         if not callable(fit):
             raise TypeError("Model must provide fit")
@@ -262,7 +274,9 @@ class ModelStep(Step):
             )
         if "context" in signature(fit).parameters:
             params["context"] = context
+
         fit(np.asarray(selected.X), None if self.reconstructs else np.asarray(selected.y), **params)
+
         self.input_names_ = train.feature_names
         if context:
             context.log_metadata(
@@ -293,8 +307,10 @@ class ModelStep(Step):
         transform = getattr(self.estimator, "transform", None)
         if not callable(transform):
             raise TypeError("Intermediate model must provide transform")
+
         selected = data.select(data.valid())
         values = np.asarray(transform(np.asarray(selected.X)))
+
         encoded = getattr(self.estimator, "mode", None) == "encode"
         names = tuple(f"z{i}" for i in range(values.shape[-1]))
         if not encoded and values.shape[-1] == len(self.input_names_):
@@ -321,10 +337,12 @@ class ModelStep(Step):
         selected = data.select(data.valid())
         if not len(selected.X):
             raise ValueError("No usable prediction examples")
+
         predict = getattr(self.estimator, "predict", None)
         if not callable(predict):
             raise TypeError("Model must provide predict")
         values = np.asarray(predict(np.asarray(selected.X)))
+
         mode = getattr(self.estimator, "mode", "reconstruct")
         kind = (
             "latent"

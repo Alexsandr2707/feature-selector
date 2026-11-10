@@ -20,10 +20,12 @@ class EvaluationTests(unittest.TestCase):
             None.
         """
         scores = regression_metrics([1, 2, 3], [1, 3, 2])
+
         self.assertAlmostEqual(scores["mape"], 100 * (1 / 2 + 1 / 3) / 3)
         self.assertAlmostEqual(scores["pearson"], 0.5)
         self.assertAlmostEqual(scores["pearson_pvalue"], 2 / 3)
         self.assertEqual(scores["notes"], {})
+
         negative = regression_metrics([-2, -4], [-1, -2])
         self.assertEqual(negative["mape"], 50)
         self.assertEqual(negative["pearson_pvalue"], 1)
@@ -35,6 +37,7 @@ class EvaluationTests(unittest.TestCase):
             None.
         """
         scores = regression_metrics([0, 2], [1, 2])
+
         self.assertTrue(np.isnan(scores["mape"]))
         self.assertIn("mape", scores["notes"])
         self.assertEqual(scores["n"], 2)
@@ -61,12 +64,12 @@ class EvaluationTests(unittest.TestCase):
         """
         truth = np.array([1, 2, 3])
         scores = [regression_metrics(truth, truth + offset) for offset in (1, 2, 3)]
+
         summary = summarize_regression_metrics(scores)
+
         self.assertEqual(summary["mae"], {"mean": 2, "std": 1, "n_valid": 3, "n_total": 3})
         self.assertEqual(summary["rmse"], summary["mae"])
-        self.assertEqual(
-            set(summary), {"mae", "rmse", "mape", "pearson", "pearson_pvalue", "r2"}
-        )
+        self.assertEqual(set(summary), {"mae", "rmse", "mape", "pearson", "pearson_pvalue", "r2"})
 
     def test_summary_reports_coverage_and_missing_deviation(self) -> None:
         """Expose missing scores and keep one-run deviations undefined.
@@ -78,7 +81,9 @@ class EvaluationTests(unittest.TestCase):
             regression_metrics([1, 2], [2, 3]),
             regression_metrics([0, 2], [1, 3]),
         ]
+
         summary = summarize_regression_metrics(scores)
+
         self.assertEqual(summary["mape"]["mean"], 75)
         self.assertTrue(np.isnan(summary["mape"]["std"]))
         self.assertEqual(summary["mape"]["n_valid"], 1)
@@ -102,6 +107,7 @@ class EvaluationTests(unittest.TestCase):
                 self.assertTrue(np.isnan(summary[name]["std"]))
                 self.assertEqual(summary[name]["n_valid"], 0)
                 self.assertEqual(summary[name]["n_total"], 1)
+
         with self.assertRaises(ValueError):
             summarize_regression_metrics([])
 
@@ -112,11 +118,14 @@ class EvaluationTests(unittest.TestCase):
             None.
         """
         report = pd.DataFrame({"y_true": [1, np.nan, 3], "y_pred": [2, 8, 4]})
+
         self.assertEqual(report_metrics(report)["n"], 2)
         self.assertEqual(report_metrics(report)["mae"], 1)
+
         report["feature"] = ["a", "b", "a"]
         self.assertEqual(report_metrics(report)["overall"]["n"], 2)
         self.assertEqual(set(report_metrics(report)["per_feature"]), {"a"})
+
         self.assertEqual(report_metrics(report.assign(y_true=np.nan)), {})
 
     def test_undefined_and_misaligned_metrics(self) -> None:
@@ -126,9 +135,11 @@ class EvaluationTests(unittest.TestCase):
             None.
         """
         scores = regression_metrics([2, 2], [2, 3])
+
         self.assertTrue(np.isnan(scores["r2"]))
         self.assertTrue(np.isnan(scores["pearson"]))
         self.assertIn("r2", scores["notes"])
+
         with self.assertRaises(ValueError):
             regression_metrics([1, 2], [[1], [2]])
 
@@ -143,5 +154,6 @@ class EvaluationTests(unittest.TestCase):
                 report_metrics(pd.DataFrame({"y_true": [0, 100], "y_pred": [0, value]}))
             with self.subTest(unlabelled_prediction=value), self.assertRaises(ValueError):
                 report_metrics(pd.DataFrame({"y_true": [np.nan], "y_pred": [value]}))
+
         with self.assertRaises(ValueError):
             report_metrics(pd.DataFrame({"y_true": [1, np.inf], "y_pred": [1, 2]}))

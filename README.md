@@ -1,503 +1,87 @@
 # feature_selector
 
-Эксперименты с временными признаками: Ridge, GRU, ансамбль GRU и автоэнкодеры.
-Порядок обработки задаётся единым списком шагов в YAML. Окна, исключения интервалов,
-сдвиг цели и масштабирование входят в этот список.
+Experiments with temporal features: Ridge, GRU, GRU ensembles and autoencoders.
+A single ordered list of YAML steps defines processing: interval exclusions,
+target filtering and alignment, scaling, feature selection, windows and the final model.
 
-Карта архитектуры и контракты:
-[docs/architecture.md](docs/architecture.md).
-Правила оформления собственного кода: [docs/code_style.md](docs/code_style.md).
+Use the project as a local Python library with a CLI and notebooks, or as a
+five-service system with a GUI. The numerical core works independently of the
+services. Their interface, application messages and logs are in English;
+user-provided names and source data are preserved without translation.
 
-## Конфиги и ноутбуки
+Run all commands below from the repository root.
 
-Файлы сгруппированы по датасету и семейству экспериментов. Конфиги находятся
-в `configs/`, ноутбуки — в `notebooks/` с такой же структурой каталогов.
-`pretrain` означает обучение и экспорт автоэнкодера; остальные имена обозначают
-прогнозный сценарий. Общий пример конфигурации — `configs/example.yaml`.
+## Run the microservices
 
-Параметры экспериментов меняются в YAML и ноутбуках. Примеры ниже показывают
-использование API и отдельных шагов; они не фиксируют содержимое файлов в `configs/`.
-Путь экспорта кодировщика выбирается при сохранении и передаётся в `frozen_pipeline`.
+Docker Engine, Docker Compose and access to the Docker daemon are required.
+Source data is not included in the repository: prepare `datasets/uzk/uzk.csv`
+and `datasets/uzk/uzk_lab.csv` using the [format description](docs/services.md#data-preparation).
+Then run:
 
-Ноутбуки запускайте последовательно с ядром `.venv` после `uv sync`.
-Начальная ячейка находит корень проекта из текущего каталога или его родителей
-и делает его рабочим каталогом, сохраняя общие `datasets/`, `runs/` и `tmp/`.
-Для Feature-автоэнкодера используйте общие ноутбуки `uzk/autoencoder/`, выбрав
-соответствующий конфиг и путь экспорта.
-Команды CLI в этом README выполняются из корня проекта.
+```bash
+docker compose up --build -d
+docker compose ps
+```
 
-Для коммитов ноутбуков настройте [Git-фильтр](docs/notebooks.md): локальные графики
-и outputs сохраняются, в Git попадает очищенная копия.
+After startup, open:
 
-## Установка
+- [GUI](http://127.0.0.1:8501).
+- [Master API and interactive documentation](http://127.0.0.1:8000/docs).
+- [Dependency status](http://127.0.0.1:8000/api/v1/status).
 
-Python >= 3.12, управление окружением через uv:
+The interface supports four scenarios: collect a Dataset, train Ridge/GRU,
+predict with a saved Run and compare validation results. Test evaluation requires
+an explicit action. See the [scenario walkthrough](docs/services.md#four-scenario-walkthrough)
+for the steps and GUI buttons. For a quick API demonstration:
+
+```bash
+docker compose exec master python -m services.demo --url http://127.0.0.1:8000/api/v1
+```
+
+Data paths, environment settings, container management, saved objects and v1
+limitations are described in the [service guide](docs/services.md).
+
+## Local library and CLI
+
+Python >= 3.12 and uv are required. PyTorch, matplotlib and TensorBoard are
+installed with the project:
 
 ```bash
 uv sync
 ```
 
-PyTorch, matplotlib и TensorBoard устанавливаются вместе с проектом.
-
-## Данные
-
-CSV содержит время в первом столбце, заголовок и числовые значения. Признаки и цели
-могут находиться в разных файлах; целевой файл необязателен. Загрузчик сортирует
-временные метки, проверяет их уникальность и восстанавливает регулярную сетку.
-Пропуски остаются NaN: строки не уплотняются и автоматически не интерполируются.
-
-```yaml
-data:
-  features_path: ../datasets/uzk/uzk.csv
-  target_path: ../datasets/uzk/uzk_lab.csv
-  target_column: UZK.Q.81AY00108.FINALPOINT
-  freq: 1h
-```
-
-Пути относительны YAML-файлу. Для обучения автоэнкодера достаточно `features_path`
-и `freq`. Исключения задаются отдельным шагом, а не полем `data`.
-
-## Конфигурация пайплайна
-
-```yaml
-data:
-  features_path: ../data/features.csv
-  target_path: ../data/target.csv
-  target_column: target
-  freq: 1h
-
-split:
-  train_fraction: 0.6
-  validation_fraction: 0.2
-
-pipeline:
-  - name: exclusions
-    type: exclude_intervals
-    params:
-      intervals:
-        - ['2022-10-01', '2022-10-16 23:00:00']
-  - name: scaler
-    type: standard
-  - name: future_target
-    type: align_target
-    params:
-      horizon: 1
-  - name: selector
-    type: static
-    params:
-      columns: [sensor_a, sensor_b]
-  - name: windows
-    type: windows
-    params:
-      lookback: 48
-  - name: target_scaler
-    type: target_scale
-    params:
-      scaler:
-        type: standard
-  - name: model
-    type: gru
-    params:
-      hidden_size: 16
-      epochs: 200
-      batch_size: 128
-      learning_rate: 0.01
-      device: cpu
-
-run:
-  output_dir: ../runs
-  experiment_name: uzk_gru
-```
-
-Встроенные типы: `exclude_intervals`, `filter`, `align_target`, `windows`, `temporal_pool`, `standard`,
-`minmax`, `robust`, `static`, `elasticnet`, `pls`, `target_scale`, `ridge`, `gru`, `gru_ensemble`,
-`conv_autoencoder`, `gru_autoencoder`, `s4_autoencoder`, `frozen_pipeline`, `passthrough`.
-
-Каждый шаг получает `PipelineData`: X, необязательный y, имена признаков и метаданные
-времени, выборки и исключений. Шаги вызываются последовательно через одинаковые
-`fit(train, validation, context=...)` и `transform(data, context=...)`. Финальный шаг
-также предоставляет `predict`.
-
-- `exclude_intervals` маскирует включительные интервалы без сжатия сетки; после
-  создания окон учитывает пересечение интервала с историей окна.
-- `align_target` сдвигает y к входной точке, обновляет время цели и выборку.
-- `windows` формирует `(samples, time, features)`. Отсутствие y не удаляет окно;
-  пригодность целей определяет потребляющий их алгоритм.
-- Scaler до `align_target` обучается на исходных строках train. Шаг не знает
-  параметры последующих шагов.
-- Нейронные модели обучаются на train, validation служит для контроля и выбора весов.
-  В ансамбле `gru_ensemble` Ridge обучается на validation-прогнозах базовых GRU.
-  Test автоматически не предсказывается и не оценивается.
-- Выборка после сдвига определяется временем цели. История окна может заходить
-  в предыдущую выборку; дополнительного зазора нет.
-
-Вместо долей можно задать `validation_start` и `test_start`. Доли validation/test
-могут быть нулевыми. Без validation нейронные модели выполняют все эпохи и сохраняют
-финальные веса; `validation_loss` и `best_epoch_` равны None.
-
-У GRU параметр `checkpoint_start_epoch` задаёт первую эпоху, участвующую в выборе
-лучших весов и отсчёте `patience` (нумерация от 1). Ранние эпохи обучаются и
-логируются полностью, но их validation loss не влияет на сохранение checkpoint.
-По умолчанию выбор начинается с первой эпохи.
-Если обучение завершилось раньше указанной эпохи, сохраняются финальные веса,
-`best_epoch_` равен None. У автоэнкодеров выбор начинается с первой эпохи.
-
-GRU и автоэнкодеры поддерживают опциональный `max_grad_norm` в `params`:
-например, `max_grad_norm: 1.0` ограничивает общую L2-норму градиентов всех параметров
-после `backward()` перед каждым обновлением весов. Значение должно быть конечным
-и положительным; отсутствие параметра или `null` отключает клиппинг.
-
-Причинность и порядок обработки определяет автор пайплайна. Конфигурация проверяет
-структуру, алгоритмы — необходимые условия в момент использования. Фабрика не
-вызывает предварительную полную проверку параметров моделей.
-Фильтр цели использует будущие значения: его статистика
-может зависеть от validation/test, хотя эти примеры не передаются в `fit` шагов.
-
-## Фильтрация цели
-
-Шаг `filter` применяется только к `y`:
-
-```yaml
-- name: filter
-  type: filter
-  params:
-    filter_freq: 1W
-    max_diff: 30
-```
-
-Он вычисляет средние по периодам, модуль разности соседних средних, переносит разности
-на исходную частоту через `nearest` и заменяет цели на NaN при превышении `max_diff`.
-Частота берётся из временного контекста. Используются будущие значения;
-статистика пересчитывается по всей переданной временной сетке, включая разные выборки.
-
-Порог применяется в единицах цели на входе шага. X и строки сохраняются;
-цели NaN исключаются из обучения и метрик, но прогнозы для этих строк остаются доступными.
-При неизвестной y шаг ничего не меняет. Число новых масок по выборкам записывается
-в `metadata.json` и JSONL в поле `masked_targets` пространства `pipeline/filter`.
-
-## Воспроизводимость
-
-Перед загрузкой данных и построением пайплайна `run.seed` инициализирует глобальные
-генераторы Python `random`, NumPy и PyTorch на CPU/CUDA. По умолчанию используется 0;
-допустимы целые значения от 0 до `2**32 - 1`.
-
-```yaml
-run:
-  seed: 42
-  output_dir: ../runs
-  experiment_name: uzk_gru
-```
-
-Параметры `random_state` моделей задаются отдельно: они управляют инициализацией весов
-и перемешиванием батчей. У ансамбля каждая GRU получает `random_state + index`.
-`run.seed` не подменяет эти параметры; значение сохраняется в метаданных запуска.
-
-## Каталоги экспериментов
-
-`run.experiment_name` задаёт имя эксперимента. Все артефакты запуска — `run.log`,
-`events.jsonl`, TensorBoard, метрики и модель — сохраняются вместе:
-
-```text
-<run.output_dir>/<run.experiment_name>/2026-11-03_14-05-09/
-```
-
-В имени каталога используется локальное время машины до секунды. При совпадении
-добавляются суффиксы `_2`, `_3` и далее; существующие результаты не перезаписываются.
-Имя эксперимента должно быть непустой строкой без разделителей пути и нулевого
-символа; `.` и `..` запрещены. Без поля используется `default`.
-Относительный `output_dir` разрешается относительно YAML-файла.
-
-## Запуск и предсказание
+CSV files contain timestamps in the first column and numeric values. Features
+and targets may be stored in separate files. YAML data paths are relative to
+the configuration file. After preparing data for the selected configuration,
+run, for example:
 
 ```bash
 uv run feature-selector run configs/uzk/gru.yaml
 ```
 
-```python
-from feature_selector import load_config, run_experiment
-from feature_selector.artifacts import load_run
-from feature_selector.data import load_data
-from feature_selector.evaluation import report_metrics
+Configurations live in `configs/`; notebooks use a matching layout under
+`notebooks/`. Select the `.venv` kernel for notebooks. Git filter setup is covered
+in the [notebook guide](docs/notebooks.md). Python API examples, the detailed
+data format, model parameters and artifacts are in the [experiment guide](docs/experiments.md).
 
-config = load_config("configs/uzk/gru.yaml")
-run = run_experiment(config)
-print(run.metrics)
+## Documentation
 
-saved = load_run(run.artifact_dir)
-data = load_data(**config.data)
-test_report = saved.predict(data, split="test")
-print(report_metrics(test_report))
-```
+| Document | Contents |
+| --- | --- |
+| [Experiments](docs/experiments.md) | Data, YAML, CLI/Python API, models, seed series, artifacts and TensorBoard |
+| [Microservices](docs/services.md) | CSV preparation, deployment, GUI scenarios, API, object and job lifecycle |
+| [Architecture](docs/architecture.md) | Module boundaries, data and step contracts, temporal processing and evaluation |
+| [Development](docs/development.md) | Extension, environments, tests, builds and acceptance checks |
+| [Code style](docs/code_style.md) | Python, type annotation and docstring rules |
+| [Notebooks](docs/notebooks.md) | Git filter setup that preserves local outputs |
 
-Прогнозирование допускает неизвестные цели и возвращает для них `y_true=NaN`.
-Метрики рассчитываются только по наблюдавшимся целям. Для полностью неразмеченного
-прогноза можно передать результат `load_features(...)`.
-Прогнозы NaN/inf считаются ошибкой, включая точки с неизвестной целью.
-
-Метрики включают `mae`, `rmse`, `mape` (в процентах), `r2`, `pearson`
-и `pearson_pvalue` (двусторонний p-value). Если среди наблюдавшихся целей есть ноль,
-MAPE равна NaN с пояснением в `notes`; остальные метрики используют все наблюдения.
-Неопределённые R², корреляция и p-value также сопровождаются пояснениями.
-
-`feature_selector.evaluation.summarize_regression_metrics(scores)` принимает непустой
-список результатов `regression_metrics` для отдельных запусков на одинаковых примерах.
-Для каждой метрики возвращаются `mean`, выборочное стандартное отклонение `std`
-(`ddof=1`), число конечных значений `n_valid` и общее число запусков `n_total`.
-Неопределённые значения исключаются из сводки; без доступных значений среднее равно
-NaN, при менее чем двух значениях стандартное отклонение равно NaN.
-Сводка p-value описывает разброс между запусками, а не общий тест значимости.
-
-### Серия запусков по сидам
-
-```python
-from feature_selector.experiment import run_seed_experiments
-
-series = run_seed_experiments("configs/uzk/gru.yaml")  # Seeds 0, ..., 9.
-print(series.metrics_per_seed)
-print(series.metrics_summary)
-print(series.artifact_dir)
-```
-
-Для собственного набора передайте `seeds=[7, 13, 42]`. Сиды должны быть уникальными
-целыми числами в диапазоне `[0, 2**32 - 1]`; порядок запусков сохраняется.
-Функция предназначена для регрессии с одной целью и конечным алгоритмом,
-предоставляющим `random_state`, включая GRU и ансамбль GRU. Для ансамбля сид
-задаёт начало последовательности сидов участников. Детерминированный `WindowRidge`
-этого параметра не предоставляет. Нужны test-разбиение и наблюдавшиеся test-цели.
-
-Первый запуск обучает весь пайплайн, затем его префикс перед конечной моделью
-сохраняется в `preprocessing.pkl`. Последующие запуски используют этот префикс
-через `frozen_pipeline` без повторного обучения, включая скейлер цели и любые
-промежуточные автоэнкодеры. Меняется только `random_state` конечного алгоритма;
-`run.seed`, разбиение и обученная предобработка фиксированы. Поэтому разброс
-описывает изменчивость конечной модели при одном обученном представлении данных.
-Изменение входных файлов или состава test-примеров между запусками считается ошибкой.
-
-Серия сохраняется в `<run.output_dir>/<run.experiment_name>/<время-серии>/`.
-Внутри находятся:
-
-- `metrics_per_seed.csv`: сид, все test-метрики, число наблюдений `n`, JSON-пояснения
-  `notes` и путь `artifact_dir` к отдельному запуску.
-- `metrics_summary.csv`: метрика, `mean`, `std`, `n_valid`, `n_total`.
-- `series.json`: запрошенные и завершённые сиды, статус серии, общий `run_seed`
-  и используемый `std_ddof=1`.
-- `runs/seed_<seed>/<время-запуска>/`: обычные артефакты каждого запуска, дополненные test-метриками
-  в `metrics.json` и `run.pkl`, а также файлом `predictions_test.csv`.
-
-Серия явно оценивает test после обучения каждого алгоритма; test не используется
-для выбора сида или весов. В метаданных отдельного запуска `model_seed` хранится
-отдельно от общего `seed`. Сохранённый `run.pkl` содержит обученный префикс и
-работает без исходного `preprocessing.pkl`.
-
-Таблицы обновляются после каждого завершённого сида. При ошибке серия прекращается,
-сохраняет завершённые результаты и записывает `failure.json`; статус в `series.json`
-становится `failed`. Для частичной серии `n_total` относится к завершённым запускам,
-полный запрошенный список остаётся в `series.json`. Результат функции содержит таблицы
-и путь к артефактам; модели загружаются по отдельности через `load_run`.
-
-На графиках truth и predictions пропуски удаляются отдельно для каждой кривой:
-линии соединяют оставшиеся точки через разрывы. Данные отчётов при этом не заполняются.
-Кривая truth рисуется поверх predictions.
-
-`run.pipeline["name"]` возвращает шаг; у адаптера алгоритм доступен как `.estimator`.
-`run.model` — конечный алгоритм. Для промежуточного представления:
-
-```python
-from feature_selector.pipeline.data import prepare_data
-
-prepared = prepare_data(data, run.boundaries, config.data["freq"])
-windows = run.pipeline.transform(prepared, through="windows")
-```
-
-## Ансамбль GRU
-
-`gru_ensemble` обучает несколько GRU с одинаковыми параметрами и разными
-seeds. Каждая GRU обучается на train и выбирает веса по validation. Затем Ridge
-обучается на прогнозах этих моделей на всей той же validation; один столбец входа
-Ridge соответствует одной GRU. Test в обучении не участвует.
-
-Пример последнего шага пайплайна:
-
-```yaml
-- name: model
-  type: gru_ensemble
-  params:
-    n_estimators: 10
-    alpha: 0.2
-    fit_intercept: true
-    random_state: 0
-    gru_params:
-      hidden_size: 16
-      epochs: 200
-      patience: 200
-      batch_size: 128
-      device: cpu
-```
-
-Параметры GRU задаются в `gru_params`, кроме `random_state`: ансамбль увеличивает
-его на единицу для каждой следующей модели. При `patience >= epochs` выполняются
-все эпохи, validation loss продолжает логироваться, лучшие веса восстанавливаются.
-Validation обязательна для обучения Ridge.
-Метрики validation описывают данные, использованные для выбора весов GRU и обучения
-Ridge; независимая оценка итогового ансамбля выполняется на test явным вызовом.
+## Checks
 
 ```bash
-uv run feature-selector run configs/uzk/gru_ensemble.yaml
-```
-
-Обученные модели доступны в `run.model.estimators_`, Ridge — в `run.model.meta_model_`.
-История ансамбля `run.model.history_` содержит отдельную запись для каждой GRU:
-`estimator`, `random_state`, `best_epoch`, `history`. Для графика одной модели
-используйте её `history_` и `best_epoch_`. В TensorBoard потери разделены по путям
-`pipeline/model/gru_0`, `pipeline/model/gru_1`, …; коэффициенты Ridge сохранены
-в метаданных `pipeline/model/ridge`.
-
-`notebooks/uzk/gru_ensemble.ipynb` показывает сводку всех GRU, историю выбранной модели,
-коэффициенты Ridge и явную оценку test после загрузки сохранённого пайплайна.
-
-Для обучения на признаках автоэнкодера передайте экспортированный префикс
-в шаг `frozen_pipeline`. Масштабирование, окна и кодировщик загружаются из экспорта
-без повторного обучения. Скейлер цели и конечная модель обучаются в новом запуске.
-
-## Автоэнкодеры и сохранённый кодировщик
-
-Автоэнкодеры принимают окна `(samples, time, features)` и обучаются восстанавливать
-X независимо от наличия y. `mode: reconstruct` возвращает восстановленные окна,
-`mode: encode` — латентные последовательности.
-
-`conv_autoencoder` поддерживает два вида сжатия. `compression: features_time`
-сжимает признаки и временную ось: временные свёртки используют `kernel_size=3`,
-декодер восстанавливает длину окна интерполяцией. `compression: features` сжимает
-только признаки: полносвязные слои обрабатывают каждый момент времени независимо,
-с общими весами. Между слоями используется GELU, выходы без активации.
-
-`gru_autoencoder` использует `GRU → Linear` в энкодере и
-`Linear → GELU → GRU → Linear` в декодере. Длина окна сохраняется.
-Декодер получает только латентную последовательность, без скрытого состояния
-энкодера. `hidden_channels` задаёт ширину обеих GRU, `latent_channels` — число
-сжатых признаков. Параметра `compression` у этой модели нет.
-
-`s4_autoencoder` использует однонаправленную S4 (`mode="diag"`) без внешних
-residual-связей и LayerNorm. Энкодер: `S4(F) → Linear(F, C)`; декодер:
-`Linear(C, F) → GELU → S4(F) → Linear(F, F)`. Оба блока работают на ширине
-входных признаков `F`. `latent_channels` задаёт ширину `C`, а `state_size` —
-положительный чётный размер памяти S4. Длина окна сохраняется.
-
-Параметр `dropout` S4 задаёт вероятность выключения каналов: конечное число
-в `[0, 1)`. Маски общие по времени внутри окна (`tie_dropout=True`).
-При прогнозировании dropout отключён.
-
-Опциональный шаг `temporal_pool` усредняет соседние точки внутри каждого окна.
-`factor` — положительное целое, на которое длина окна делится без остатка;
-`factor: 1` сохраняет длину. Примеры, цели, признаки и временные границы истории
-сохраняются. Pooling после замороженного кодировщика позволяет менять временное
-разрешение без его переобучения; последующую модель нужно обучить заново.
-
-При обучении PyTorch-моделей последний неполный батч отбрасывается после
-перемешивания окон в каждой эпохе. Нужен хотя бы один полный обучающий батч.
-Validation и predict используют все примеры; средний train loss учитывает
-только обработанные окна.
-
-Пример экспорта обученного префикса:
-
-```python
-run.pipeline.export_transform(
-    "runs/encoder.pkl", through="autoencoder", mode="encode"
-)
-```
-
-Имя `through` должно соответствовать шагу обученного пайплайна. Экспорт содержит
-все шаги до него включительно; смена режима применяется к копии модели.
-Для использования экспорта добавьте шаг:
-
-```yaml
-- name: encoder
-  type: frozen_pipeline
-  params:
-    path: ../runs/encoder.pkl
-```
-
-Замороженный шаг ничего не обучает. Полный сохранённый запуск включает его
-состояние и работает после удаления исходного экспорта. Имена и порядок признаков,
-а также частота должны совпадать с обучением префикса. Границы предобучения
-сохранены как provenance; допустимость этих границ определяет автор эксперимента.
-Загружайте pickle только из доверенных источников.
-
-Автоэнкодер считает loss по полному окну в единицах обучения. Отчёты реконструкции
-используют последние точки окон в исходных единицах: `overall` и `per_feature`.
-В цепочке автоэнкодеров эталон берётся из исходных наблюдений, поэтому метрики
-учитывают потери всей цепочки.
-
-## История, события и TensorBoard
-
-```bash
-uv run tensorboard --logdir runs
-```
-
-Графики обучения смотрите в **Scalars** с фильтром `loss|learning_rate`.
-Итоговые метрики всех моделей сохраняются в `metrics.json`, параметры — в
-`config.yaml`. В TensorBoard итоговые train/validation-метрики доступны в **Scalars**
-с фильтром `results/`, а таблица результатов — в **Text → results/summary**.
-Для автоэнкодеров публикуются метрики `overall` в исходных единицах;
-результаты по каждому признаку остаются в `metrics.json`. Неопределённые R² и Pearson
-в таблице обозначаются `—` и не записываются как скаляры. Test автоматически
-не вычисляется и не логгируется. Итоговые результаты появляются после завершения запуска.
-
-Каждый выполненный train-батч записывается сразу: loss до обновления весов, фактический
-размер батча, epoch, batch, сквозной step и learning rate. В TensorBoard публикуются
-train loss и learning rate по батчам, validation loss — по эпохам при наличии validation.
-Средний train loss эпохи остаётся в `history_` и `events.jsonl`, но не публикуется
-в TensorBoard и `run.log`. Это взвешенное среднее batch losses, без дополнительного
-прохода по train. Веса выбираются по validation loss. История доступна как
-`run.model.history_` и после загрузки.
-У ансамбля для графика эпох или батчей выберите историю отдельного участника:
-`run.model.estimators_[member_index].history_`.
-
-```python
-import pandas as pd
-
-model = run.model  # For an ensemble, select run.model.estimators_[member_index].
-batches = pd.DataFrame([
-    {"epoch": epoch["epoch"], **batch}
-    for epoch in model.history_ for batch in epoch["batches"]
-])
-batches.plot(x="step", y="train_loss")
-```
-
-Выходы запуска: `config.yaml`, `metadata.json`, `events.jsonl`, `run.log`,
-`tensorboard/`, `history.json`, `features.json`, `metrics.json`, `predictions_*.csv`,
-`run.pkl`. При ошибке создаётся `failure.json`, завершённые batch-события сохраняются.
-
-JSONL содержит `time`, `path`, `event`, `data`. Путь идентифицирует шаг и вложенный
-подпайплайн. Исполнитель записывает начало/конец, размеры и длительность; runner —
-обучение; шаги — собственную диагностику. Метаданные запуска содержат пути/хеши
-входов, версии, границы и сводку каждого шага. Большие массивы не записываются в лог.
-
-## Добавление шага
-
-Наследуйте `Step`, реализуйте `transform` и при необходимости `fit`, зарегистрируйте
-конструктор через `register_step("name", Constructor)` перед запуском. Для Python API
-также допустимы пары `(name, step)` в списке pipeline; экземпляры клонируются.
-Шаг обязан согласованно обновлять X, y и метаданные при изменении примеров.
-В сохранённом `config.yaml` Python-шаг представлен полями `name`, `class`, `params`;
-вложенные estimators сохраняются через `class` и `params`. При повторной загрузке
-классы импортируются по полному имени, поэтому они должны быть определены на верхнем
-уровне доступного Python-модуля. Обычные YAML-конфиги продолжают использовать `type`.
-
-`context` необязателен и не хранится в модели. Он предоставляет `log_metrics`,
-`log_metadata`, `log_event`, `log_message`; данные привязаны к пространству имён шага.
-Компонент не открывает файлы и не создаёт TensorBoard writer самостоятельно.
-
-## DataSet1 и проверки
-
-```bash
-uv run python scripts/dataset1.py prepare
-uv run python scripts/dataset1.py run configs/dataset1/gru.yaml
 .venv/bin/python -m unittest discover -s tests -v
 uv lock --check
 uv build
 ```
 
-Подготовка DataSet1 удаляет лабораторные/качественные сигналы из признаков и сохраняет
-числовые значения. Скрипт явно оценивает test после обучения и сохраняет сравнение
-со средним наблюдавшихся train-целей.
+The separate environment and service test commands are described in the
+[development guide](docs/development.md#service-checks).
