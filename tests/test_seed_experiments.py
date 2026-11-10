@@ -105,6 +105,7 @@ class SeedExperimentTests(unittest.TestCase):
             config = gru_config(Path(directory), sparse=True)
             config["run"]["experiment_name"] = "gru_seeds"
             before = deepcopy(config)
+
             with (
                 patch.object(
                     StandardScaler, "fit", autospec=True, side_effect=StandardScaler.fit
@@ -112,6 +113,7 @@ class SeedExperimentTests(unittest.TestCase):
                 patch.object(GRURegressor, "fit", observe_fit),
             ):
                 result = run_seed_experiments(config, seeds=[7, 3, 11])
+
             self.assertEqual(config, before)
             self.assertEqual(result.artifact_dir.parent, Path(directory) / "runs" / "gru_seeds")
             self.assertEqual(scaler_fit.call_count, 2)
@@ -132,6 +134,7 @@ class SeedExperimentTests(unittest.TestCase):
                 result.metrics_summary,
                 check_dtype=False,
             )
+
             summary = result.metrics_summary.set_index("metric")
             for metric in METRIC_NAMES:
                 self.assertAlmostEqual(summary.loc[metric, "mean"], per_seed[metric].mean())
@@ -153,14 +156,17 @@ class SeedExperimentTests(unittest.TestCase):
                 self.assertEqual(run.metadata["model_seed"], row.seed)
                 self.assertTrue(run.metadata["test_evaluated"])
                 self.assertEqual(run.pipeline.provenance_["model_seed"], row.seed)
+
                 pd.testing.assert_frame_equal(run.predict(source, "test"), run.predictions["test"])
                 self.assertEqual(report_metrics(run.predictions["test"]), run.metrics["test"])
+
                 stored = json.loads((run.artifact_dir / "metrics.json").read_text())
                 self.assertEqual(stored["test"], run.metrics["test"])
                 self.assertTrue((run.artifact_dir / "predictions_test.csv").is_file())
                 self.assertLess(row.n, len(run.predictions["test"]))
                 predictions.append(run.predictions["test"]["y_pred"].to_numpy())
             self.assertFalse(np.array_equal(predictions[0], predictions[1]))
+
             manifest = json.loads((result.artifact_dir / "series.json").read_text())
             self.assertEqual(manifest["status"], "completed")
             self.assertEqual(manifest["seeds"], [7, 3, 11])
@@ -184,11 +190,14 @@ class SeedExperimentTests(unittest.TestCase):
             config = gru_config(root)
             path = root / "config.yaml"
             path.write_text(yaml.safe_dump(config))
+
             first = run_seed_experiments(path, seeds=[2, 5])
+
             model = GRURegressor(**config["pipeline"][-1]["params"])
             config["pipeline"][-1] = ("model", ModelStep(model))
             settings = ExperimentConfig.from_dict(config)
             second = run_seed_experiments(settings, seeds=[2, 5])
+
             self.assertEqual(model.random_state, 999)
             self.assertFalse(hasattr(model, "network_"))
             pd.testing.assert_frame_equal(first.metrics_summary, second.metrics_summary)
@@ -212,9 +221,11 @@ class SeedExperimentTests(unittest.TestCase):
             root = Path(directory)
             config = gru_config(root)
             invalid_seeds: list[Any] = [[], [1, 1], [-1], [2**32], [True], [1.5], ["2"]]
+
             for seeds in invalid_seeds:
                 with self.subTest(seeds=seeds), self.assertRaises(ValueError):
                     run_seed_experiments(config, seeds=seeds)
+
             config["pipeline"][-1] = {"name": "model", "type": "ridge"}
             with self.assertRaisesRegex(ValueError, "random_state"):
                 run_seed_experiments(config, seeds=[0])
@@ -235,7 +246,9 @@ class SeedExperimentTests(unittest.TestCase):
                 "type": "gru_ensemble",
                 "params": {"n_estimators": 2, "gru_params": params},
             }
+
             result = run_seed_experiments(config, seeds=[2, 8])
+
             for row in result.metrics_per_seed.itertuples(index=False):
                 run = load_run(row.artifact_dir)
                 self.assertEqual(
@@ -253,9 +266,11 @@ class SeedExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = gru_config(Path(directory))
             config["split"] = {"train_fraction": 1, "validation_fraction": 0}
+
             with patch.object(GRURegressor, "fit") as fit:
                 with self.assertRaisesRegex(ValueError, "test split"):
                     run_seed_experiments(config, seeds=[0])
+
                 del config["data"]["target_path"]
                 del config["data"]["target_column"]
                 with self.assertRaisesRegex(ValueError, "target data"):
@@ -297,19 +312,24 @@ class SeedExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = gru_config(root)
+
             with patch.object(GRURegressor, "fit", fail_second):
                 with self.assertRaisesRegex(RuntimeError, "Training interrupted"):
                     run_seed_experiments(config, seeds=[1, 2, 3])
+
             series_dir = next((root / "runs" / "default").iterdir())
             rows = pd.read_csv(series_dir / "metrics_per_seed.csv")
             self.assertEqual(rows["seed"].tolist(), [1])
+
             summary = pd.read_csv(series_dir / "metrics_summary.csv")
             self.assertTrue(summary["std"].isna().all())
             self.assertTrue((summary["n_total"] == 1).all())
+
             manifest = json.loads((series_dir / "series.json").read_text())
             self.assertEqual(manifest["status"], "failed")
             self.assertEqual(manifest["failed_seed"], 2)
             self.assertEqual(manifest["completed_seeds"], [1])
+
             failure = json.loads((series_dir / "failure.json").read_text())
             self.assertEqual(failure["type"], "RuntimeError")
             self.assertEqual(load_run(rows.iloc[0]["artifact_dir"]).model.random_state, 1)
@@ -326,8 +346,10 @@ class SeedExperimentTests(unittest.TestCase):
             targets = pd.read_csv(root / "target.csv", index_col=0)
             targets.iloc[48:] = np.nan
             targets.to_csv(root / "target.csv")
+
             with self.assertRaisesRegex(ValueError, "No observed usable test targets"):
                 run_seed_experiments(config, seeds=[0])
+
             series_dir = next((root / "runs" / "default").iterdir())
             self.assertTrue(pd.read_csv(series_dir / "metrics_per_seed.csv").empty)
             self.assertTrue(pd.read_csv(series_dir / "metrics_summary.csv").empty)
@@ -350,14 +372,18 @@ class SeedExperimentTests(unittest.TestCase):
             targets = pd.read_csv(root / "target.csv", index_col=0)
             targets.iloc[48] = 0
             targets.to_csv(root / "target.csv")
+
             result = run_seed_experiments(config)
+
             self.assertEqual(result.metrics_per_seed["seed"].tolist(), list(range(10)))
             self.assertTrue(result.metrics_per_seed["mape"].isna().all())
+
             mape = result.metrics_summary.set_index("metric").loc["mape"]
             self.assertTrue(np.isnan(mape["mean"]))
             self.assertTrue(np.isnan(mape["std"]))
             self.assertEqual(mape["n_valid"], 0)
             self.assertEqual(mape["n_total"], 10)
+
             self.assertFalse((result.artifact_dir / "preprocessing.pkl").exists())
             self.assertIsNone(
                 json.loads((result.artifact_dir / "series.json").read_text())["preprocessing_path"]
@@ -372,8 +398,10 @@ class SeedExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = gru_config(Path(directory))
             config["split"] = {"train_fraction": 0.8, "validation_fraction": 0}
+
             result = run_seed_experiments(config, seeds=[0])
             run = load_run(result.metrics_per_seed.iloc[0]["artifact_dir"])
+
             self.assertNotIn("validation", run.metrics)
             self.assertIsNone(run.model.best_epoch_)
             self.assertEqual(len(run.model.history_), 2)

@@ -196,6 +196,7 @@ class TorchModelRunner:
                     "samples": sum(batch["samples"] for batch in batches),
                 },
             )
+
             if validation_loss is not None and validation_data is not None:
                 context.log_metrics(
                     {"loss": validation_loss},
@@ -280,6 +281,7 @@ class TorchModelRunner:
                     self.network.parameters(), max_grad_norm, error_if_nonfinite=True
                 )
             self.optimizer.step()
+
             batch_loss = loss.item()
             batches.append(
                 {
@@ -299,6 +301,7 @@ class TorchModelRunner:
                 step=global_step + batch_number,
                 samples=len(batch_x),
             )
+
             total_loss += batch_loss * len(batch_x)
             sample_count += len(batch_x)
 

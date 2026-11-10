@@ -1,0 +1,76 @@
+name: feature-selector
+x-api: &api
+  restart: unless-stopped
+  init: true
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+services:
+  collector:
+    <<: *api
+    build:
+      context: .
+      dockerfile: services/collector/Dockerfile
+    volumes:
+      - ${DATASETS_DIR:-./datasets}:/sources:ro
+      - collector-state:/state
+      - ./deploy/collector.yaml:/app/deploy/collector.yaml:ro
+  storage:
+    <<: *api
+    build:
+      context: .
+      dockerfile: services/storage/Dockerfile
+    volumes:
+      - storage-state:/state
+      - ./deploy/storage.yaml:/app/deploy/storage.yaml:ro
+  ml:
+    <<: *api
+    build:
+      context: .
+      dockerfile: services/ml/Dockerfile
+    environment:
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    depends_on:
+      storage: {condition: service_healthy}
+    volumes:
+      - ml-state:/state
+      - ./deploy/ml.yaml:/app/deploy/ml.yaml:ro
+    stop_grace_period: 15s
+  master:
+    <<: *api
+    build:
+      context: .
+      dockerfile: services/master/Dockerfile
+    ports:
+      - 127.0.0.1:${MASTER_PORT:-8000}:8000
+    depends_on:
+      storage: {condition: service_healthy}
+      collector: {condition: service_healthy}
+      ml: {condition: service_healthy}
+    volumes:
+      - master-state:/state
+      - ./deploy/master.yaml:/app/deploy/master.yaml:ro
+    stop_grace_period: 15s
+  visualization:
+    <<: *api
+    build:
+      context: .
+      dockerfile: services/visualization/Dockerfile
+    ports:
+      - 127.0.0.1:${GUI_PORT:-8501}:8501
+    depends_on:
+      master: {condition: service_healthy}
+    volumes:
+      - visualization-state:/state
+      - ./deploy/visualization.yaml:/app/deploy/visualization.yaml:ro
+    stop_grace_period: 15s
+volumes:
+  storage-state:
+  collector-state:
+  ml-state:
+  master-state:
+  visualization-state:

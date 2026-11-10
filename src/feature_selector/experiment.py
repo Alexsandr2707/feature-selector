@@ -85,6 +85,7 @@ def _log_final_metrics(tracker: RunTracker, metrics: dict[str, Any]) -> None:
             tracker.writer.add_scalar(f"results/{split}/{name}", value, global_step=0)
             cells.append(str(value) if name == "n" else f"{value:.6g}")
         rows.append(f"| {split} | {' | '.join(cells)} |")
+
     if len(rows) > 2:
         tracker.writer.add_text("results/summary", "\n".join(rows), global_step=0)
 
@@ -118,6 +119,7 @@ def run_experiment(
     try:
         context.log_event("run_started", {"seed": config.run["seed"]})
         _set_global_seed(config.run["seed"])
+
         source = (
             load_data(**config.data)
             if "target_path" in config.data
@@ -125,6 +127,7 @@ def run_experiment(
         )
         data = prepare_data(source, config.split, config.data["freq"])
         metadata = input_metadata(config)
+
         pipeline = build_pipeline(config.pipeline)
         pipeline.fit(data, context=context)
         pipeline.provenance_.update(
@@ -133,6 +136,7 @@ def run_experiment(
             seed=config.run["seed"],
             versions=metadata["versions"],
         )
+
         prediction = pipeline.predict(
             data, context=StepContext(tracker, operation="predict"), splits=("train", "validation")
         )
@@ -190,12 +194,14 @@ def _seeded_step(template: Step, seed: int) -> Step:
     estimator = getattr(step, "estimator", step)
     get_params = getattr(estimator, "get_params", None)
     set_params = getattr(estimator, "set_params", None)
+
     if not callable(get_params) or not callable(set_params):
         raise TypeError("The final estimator must provide get_params and set_params")
     if "random_state" not in get_params(deep=False):  # type: ignore
         raise ValueError("The final estimator must expose a random_state parameter")
     if getattr(step, "reconstructs", False):
         raise ValueError("Seed experiments require a scalar target regression model")
+
     set_params(random_state=seed)
     return step
 
@@ -223,6 +229,7 @@ def _save_seed_tables(
         [{"metric": name, **summary} for name, summary in summaries.items()],
         columns=["metric", "mean", "std", "n_valid", "n_total"],
     )
+
     result.metrics_per_seed.to_csv(result.artifact_dir / "metrics_per_seed.csv", index=False)
     result.metrics_summary.to_csv(result.artifact_dir / "metrics_summary.csv", index=False)
 
@@ -294,9 +301,11 @@ def run_seed_experiments(
         "preprocessing_path": prefix_path,
     }
     seed = seed_values[0]
+
     try:
         _save_seed_tables(result, rows, scores)
         write_json(directory / "series.json", manifest)
+
         for index, seed in enumerate(seed_values):
             settings = deepcopy(config)
             model = (name, _seeded_step(template, seed))
@@ -313,6 +322,7 @@ def run_seed_experiments(
                 settings.pipeline[-1] = model
             settings.run["output_dir"] = str(directory / "runs")
             settings.run["experiment_name"] = f"seed_{seed}"
+
             run = run_experiment(settings)
             if inputs is None:
                 inputs = run.metadata["inputs"]
@@ -322,11 +332,13 @@ def run_seed_experiments(
             report = run.predict(source, split="test")
             if "feature" in report:
                 raise ValueError("Seed experiments require scalar target predictions")
+
             computed = report_metrics(report)
             if not computed:
                 raise ValueError("No observed usable test targets for seed experiments")
             # A nonempty scalar report is evaluated as RegressionMetrics.
             test_scores = cast(RegressionMetrics, computed)
+
             observed = report[["origin_time", "target_time", "y_true"]]
             if reference is None:
                 reference = observed
@@ -338,6 +350,7 @@ def run_seed_experiments(
             run.metadata.update(test_evaluated=True, model_seed=seed, seed_series=str(directory))
             run.pipeline.provenance_.update(model_seed=seed, seed_series=str(directory))
             save_run(run)
+
             rows.append(
                 {
                     "seed": seed,

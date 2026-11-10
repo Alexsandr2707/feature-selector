@@ -30,6 +30,7 @@ def plot_training_history(
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(12, 4), layout="constrained")
+
     ax.set_xlabel("Epoch")
     ax.set_ylabel("MSE (training target units)")
     ax.grid(True)
@@ -45,6 +46,7 @@ def plot_training_history(
     ax.plot(frame.index, frame["train_loss"], label="train_loss")
     if "validation_loss" in frame and frame["validation_loss"].notna().any():
         ax.plot(frame.index, frame["validation_loss"], label="validation_loss")
+
     if best_epoch is not None:
         ax.axvline(best_epoch, color="gray", linestyle="--", label="Best epoch")
     ax.legend()
@@ -112,6 +114,7 @@ def _prepare_axes(ax: Axes | None, title: str | None) -> Axes:
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(15, 7), layout="constrained")
+
     ax.set_xlabel("Target time")
     ax.set_ylabel("Target")
     ax.grid(True)
@@ -197,10 +200,12 @@ def plot_reconstruction_predictions(
     for split, report in reports.items():
         if "feature" not in report:
             raise ValueError("Reconstruction reports require a feature column")
+
         frame = report.loc[report["feature"] == feature]
         if not report.empty and frame.empty:
             raise ValueError(f"Feature {feature!r} is absent from the {split} report")
         selected[split] = frame
+
     ax = plot_split_predictions(selected, ax=ax, title=feature if title is None else title)
     ax.set_xlabel("Time")
     ax.set_ylabel(f"{feature} (original units)")

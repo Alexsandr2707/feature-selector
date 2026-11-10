@@ -41,10 +41,12 @@ class _Network(nn.Module):
             nn.Linear(features, hidden_channels),
             nn.GELU(),
         )
+
         self.encoder = nn.Sequential(
             nn.Conv1d(hidden_channels, latent_channels, kernel_size=3, stride=2, padding=1),
             nn.GELU(),
         )
+
         self.decoder = nn.Sequential(
             nn.Conv1d(latent_channels, hidden_channels, kernel_size=3, padding=1),
             nn.GELU(),
@@ -112,6 +114,7 @@ class _FeatureNetwork(_Network):
             nn.GELU(),
             nn.Linear(hidden_channels, latent_channels),
         )
+
         self.decoder = nn.Sequential(
             nn.Linear(latent_channels, hidden_channels),
             nn.GELU(),
@@ -158,6 +161,7 @@ class _GRUNetwork(_Network):
         nn.Module.__init__(self)
         self.encoder_gru = nn.GRU(features, hidden_channels, batch_first=True)
         self.encoder_projection = nn.Linear(hidden_channels, latent_channels)
+
         self.decoder_projection = nn.Sequential(
             nn.Linear(latent_channels, hidden_channels),
             nn.GELU(),
@@ -226,6 +230,7 @@ class _S4SequenceBlock(nn.Module):
             wd=0.0,
             verbose=False,
         )
+
         # These tables are populated at initialization; their lambda factories break pickle.
         kernel = self.s4.layer.kernel
         kernel.lr_dict.default_factory = None
@@ -273,6 +278,7 @@ class _S4Network(_Network):
         nn.Module.__init__(self)
         self.encoder = _S4SequenceBlock(features, state_size, ssm_learning_rate, dropout)
         self.encoder_projection = nn.Linear(features, latent_channels)
+
         self.decoder_projection = nn.Sequential(
             nn.Linear(latent_channels, features),
             nn.GELU(),
@@ -425,6 +431,7 @@ class ConvAutoencoder(BaseEstimator):
             raise ValueError("Require windows shaped (samples, timesteps, channels)")
         if shape is not None and X.shape[1:] != shape:
             raise ValueError(f"Window shape must match {shape}")
+
         # A copy also supports reversed views and read-only caller arrays in torch.
         with np.errstate(over="ignore", invalid="ignore"):
             values = np.array(X, dtype=np.float32, copy=True)
@@ -457,6 +464,7 @@ class ConvAutoencoder(BaseEstimator):
             raise ValueError("Unknown autoencoder mode")
         if self.compression not in ("features_time", "features"):
             raise ValueError("Unknown autoencoder compression")
+
         values = self._as_windows(X)
         window_shape = (values.shape[1], values.shape[2])
         validation = None
@@ -476,6 +484,7 @@ class ConvAutoencoder(BaseEstimator):
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                     optimizer, T_max=self.epochs, eta_min=self.min_lr
                 )
+
             runner = TorchModelRunner(network, optimizer, scheduler, self.device)
             runner.fit(
                 values,
@@ -520,6 +529,7 @@ class ConvAutoencoder(BaseEstimator):
             raise ValueError("prediction_batch_size must be a positive integer")
         if not len(X):
             return np.empty((0, *shape), dtype=np.float32)
+
         self.network_.eval()
         predictions: list[WindowArray] = []
         for start in range(0, len(X), size):
@@ -815,6 +825,7 @@ class S4Autoencoder(ConvAutoencoder):
                 options.get("weight_decay", self.weight_decay),
             )
             groups.setdefault(settings, []).append(parameter)
+
         parameter_groups: list[dict[str, Any]] = [
             {"params": parameters, "lr": lr, "weight_decay": weight_decay}
             for (lr, weight_decay), parameters in groups.items()

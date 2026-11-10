@@ -7,7 +7,6 @@ import unittest
 import numpy as np
 
 
-
 class ReconstructionRunnerTests(unittest.TestCase):
     def test_reconstruction_history_and_prediction(self) -> None:
         """Preserve windows, weighted losses, batch limits and restored checkpoints.
@@ -25,28 +24,33 @@ class ReconstructionRunnerTests(unittest.TestCase):
             network.bias.zero_()
         runner = TorchModelRunner(network, torch.optim.SGD(network.parameters(), lr=0))
         X = np.arange(30, dtype=np.float32).reshape(5, 3, 2) / 30
+
         runner.fit(X, X, (X, X), epochs=8, batch_size=2, patience=2, random_state=3)
 
         self.assertEqual(runner.best_epoch_, 1)
         self.assertEqual(len(runner.history_), 3)
-        expected_loss = float(np.mean(X ** 2))
+        expected_loss = float(np.mean(X**2))
         for epoch in runner.history_:
             self.assertEqual([batch["samples"] for batch in epoch["batches"]], [2, 2])
             weighted_loss = sum(b["train_loss"] * b["samples"] for b in epoch["batches"]) / 4
             self.assertAlmostEqual(epoch["train_loss"], weighted_loss)
             self.assertAlmostEqual(epoch["validation_loss"], expected_loss)
+
         json.dumps(runner.history_, allow_nan=False)
 
         seen_batches: list[int] = []
         hook = network.register_forward_pre_hook(
             lambda module, inputs: seen_batches.append(len(inputs[0]))
         )
+
         try:
             prediction = runner.predict(X, batch_size=2)
         finally:
             hook.remove()
+
         self.assertEqual(seen_batches, [2, 2, 1])
         np.testing.assert_array_equal(prediction, np.zeros_like(X))
+
         restored = pickle.loads(pickle.dumps(runner))
         np.testing.assert_array_equal(restored.predict(X), prediction)
 
@@ -67,6 +71,7 @@ class ReconstructionRunnerTests(unittest.TestCase):
         runner = TorchModelRunner(network, torch.optim.SGD(network.parameters(), lr=0.25))
         X = np.zeros((5, 3, 1), dtype=np.float32)
         y = np.ones_like(X)
+
         runner.fit(X, y, epochs=3, batch_size=5, patience=1, random_state=0)
 
         self.assertEqual(len(runner.history_), 3)
@@ -94,9 +99,7 @@ class ReconstructionRunnerTests(unittest.TestCase):
         network = torch.nn.Linear(2, 2)
         runner = TorchModelRunner(network, torch.optim.SGD(network.parameters(), lr=0))
         with self.assertRaisesRegex(ValueError, "Validation target shape"):
-            runner.fit(
-                X, X, (X, X[:, :1]), epochs=1, batch_size=2, patience=1, random_state=0
-            )
+            runner.fit(X, X, (X, X[:, :1]), epochs=1, batch_size=2, patience=1, random_state=0)
 
     def test_reconstruction_restores_best_weights(self) -> None:
         """Restore weights from the best reconstruction validation epoch.
@@ -115,9 +118,15 @@ class ReconstructionRunnerTests(unittest.TestCase):
         runner = TorchModelRunner(network, torch.optim.SGD(network.parameters(), lr=0.25))
         X = np.zeros((5, 3, 1), dtype=np.float32)
         validation_targets = np.full_like(X, 0.5)
+
         runner.fit(
-            X, np.ones_like(X), (X, validation_targets),
-            epochs=8, batch_size=5, patience=2, random_state=0,
+            X,
+            np.ones_like(X),
+            (X, validation_targets),
+            epochs=8,
+            batch_size=5,
+            patience=2,
+            random_state=0,
         )
 
         self.assertEqual(runner.best_epoch_, 1)

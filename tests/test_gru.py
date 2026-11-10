@@ -7,7 +7,6 @@ import unittest
 import numpy as np
 
 
-
 class TorchRunnerTests(unittest.TestCase):
     def test_checkpoint_start_ignores_early_minimum(self) -> None:
         """Select weights and count patience only from the first eligible epoch.
@@ -26,10 +25,18 @@ class TorchRunnerTests(unittest.TestCase):
         X = np.zeros((5, 1), dtype=np.float32)
         train = np.ones(5, dtype=np.float32)
         validation = np.full(5, 0.5, dtype=np.float32)
+
         runner.fit(
-            X, train, (X, validation), epochs=10, batch_size=5, patience=1,
-            random_state=0, checkpoint_start_epoch=3,
+            X,
+            train,
+            (X, validation),
+            epochs=10,
+            batch_size=5,
+            patience=1,
+            random_state=0,
+            checkpoint_start_epoch=3,
         )
+
         self.assertEqual(runner.best_epoch_, 3)
         self.assertEqual(len(runner.history_), 4)
         self.assertEqual(runner.history_[0]["validation_loss"], 0)
@@ -51,16 +58,22 @@ class TorchRunnerTests(unittest.TestCase):
                 with torch.no_grad():
                     network.weight.zero_()
                     network.bias.zero_()
-                runner = TorchModelRunner(
-                    network, torch.optim.SGD(network.parameters(), lr=0.25)
-                )
+                runner = TorchModelRunner(network, torch.optim.SGD(network.parameters(), lr=0.25))
                 X = np.zeros((5, 1), dtype=np.float32)
                 y = np.ones(5, dtype=np.float32)
                 validation = (X, np.full(5, 0.5, dtype=np.float32)) if use_validation else None
+
                 runner.fit(
-                    X, y, validation, epochs=2, batch_size=5, patience=1,
-                    random_state=0, checkpoint_start_epoch=3,
+                    X,
+                    y,
+                    validation,
+                    epochs=2,
+                    batch_size=5,
+                    patience=1,
+                    random_state=0,
+                    checkpoint_start_epoch=3,
                 )
+
                 self.assertIsNone(runner.best_epoch_)
                 self.assertEqual(len(runner.history_), 2)
                 np.testing.assert_allclose(runner.predict(X), 0.75)
@@ -79,15 +92,17 @@ class TorchRunnerTests(unittest.TestCase):
         X = np.ones((4, 2, 1), dtype=np.float32)
         y = np.ones(4, dtype=np.float32)
         model = GRURegressor(
-            batch_size=1,
-            hidden_size=2, epochs=6, patience=1, checkpoint_start_epoch=3
+            batch_size=1, hidden_size=2, epochs=6, patience=1, checkpoint_start_epoch=3
         )
+
         # The first minimum must not prevent the first eligible checkpoint from being selected.
         with patch.object(TorchModelRunner, "_validation_loss", side_effect=[0, 1, 2, 3]):
             model.fit(X, y, (X, y))
+
         self.assertEqual(model.best_epoch_, 3)
         self.assertEqual(len(model.history_), 4)
         self.assertEqual(clone(model).checkpoint_start_epoch, 3)
+
         restored = pickle.loads(pickle.dumps(model))
         np.testing.assert_array_equal(restored.predict(X), model.predict(X))
 
@@ -103,6 +118,7 @@ class TorchRunnerTests(unittest.TestCase):
         runner = TorchModelRunner(network, torch.optim.SGD(network.parameters(), lr=0.25))
         X = np.zeros((5, 1), dtype=np.float32)
         y = np.ones(5, dtype=np.float32)
+
         runner.fit(X, y, epochs=3, batch_size=5, patience=1, random_state=0)
 
         self.assertEqual(len(runner.history_), 3)
@@ -128,6 +144,7 @@ class TorchRunnerTests(unittest.TestCase):
         expected_loss = float(np.mean((X[:, 0] - y) ** 2))
         self.assertAlmostEqual(runner.history_[0]["train_loss"], expected_loss)
         self.assertAlmostEqual(runner.history_[0]["validation_loss"], expected_loss)
+
         prediction = runner.predict(X, batch_size=2)
         self.assertEqual(prediction.shape, (len(X),))
         np.testing.assert_array_equal(prediction, X[:, 0])
@@ -144,19 +161,23 @@ class TorchRunnerTests(unittest.TestCase):
             network.bias.zero_()
         optimizer = torch.optim.SGD(model.parameters(), lr=0)
         runner = TorchModelRunner(model, optimizer)
+
         X = np.zeros((5, 2), dtype=np.float32)
         y = np.arange(5, dtype=np.float32)
+
         runner.fit(X, y, (X, y), epochs=8, batch_size=2, patience=2, random_state=3)
 
         self.assertEqual(runner.best_epoch_, 1)
         self.assertEqual(len(runner.history_), 3)
+
         for epoch in runner.history_:
             batches = epoch["batches"]
             self.assertEqual([batch["batch"] for batch in batches], [1, 2])
             self.assertEqual([batch["samples"] for batch in batches], [2, 2])
             weighted_loss = sum(b["train_loss"] * b["samples"] for b in batches) / 4
             self.assertAlmostEqual(epoch["train_loss"], weighted_loss)
-            self.assertAlmostEqual(epoch["validation_loss"], float(np.mean(y ** 2)))
+            self.assertAlmostEqual(epoch["validation_loss"], float(np.mean(y**2)))
+
         json.dumps(runner.history_, allow_nan=False)
         restored = pickle.loads(pickle.dumps(runner))
         np.testing.assert_array_equal(restored.predict(X), runner.predict(X))
@@ -177,8 +198,13 @@ class TorchRunnerTests(unittest.TestCase):
 
         # Bias moves through 0.5, 0.75 and 0.875; validation is best at the first step.
         runner.fit(
-            X, y_train, (X, y_validation),
-            epochs=8, batch_size=5, patience=2, random_state=3,
+            X,
+            y_train,
+            (X, y_validation),
+            epochs=8,
+            batch_size=5,
+            patience=2,
+            random_state=3,
         )
 
         self.assertEqual(runner.best_epoch_, 1)
@@ -186,8 +212,10 @@ class TorchRunnerTests(unittest.TestCase):
         self.assertGreater(
             runner.history_[-1]["validation_loss"], runner.history_[0]["validation_loss"]
         )
+
         prediction = runner.predict(X)
         np.testing.assert_allclose(prediction, y_validation, atol=1e-7)
+
         restored_loss = float(np.mean((prediction - y_validation) ** 2))
         self.assertAlmostEqual(
             restored_loss, min(epoch["validation_loss"] for epoch in runner.history_)
@@ -202,16 +230,15 @@ class TorchRunnerTests(unittest.TestCase):
         X = np.random.default_rng(4).normal(size=(5, 2, 1)).astype(np.float32)
         y = X[:, -1, 0].copy()
         state = torch.get_rng_state().clone()
-        model = GRURegressor(
-            hidden_size=2, epochs=1, batch_size=3, prediction_batch_size=2
-        )
+        model = GRURegressor(hidden_size=2, epochs=1, batch_size=3, prediction_batch_size=2)
+
         model.fit(X, y, (X, y))
+
         self.assertTrue(torch.equal(state, torch.get_rng_state()))
         self.assertIs(model.history_, model.runner_.history_)
         self.assertEqual(len(model.history_[0]["batches"]), 1)
-        np.testing.assert_array_equal(
-            model.predict(X), model.runner_.predict(X, batch_size=2)
-        )
+        np.testing.assert_array_equal(model.predict(X), model.runner_.predict(X, batch_size=2))
+
         self.assertEqual(clone(model).prediction_batch_size, 2)
         self.assertFalse(hasattr(clone(model), "runner_"))
 
@@ -227,13 +254,16 @@ class TorchRunnerTests(unittest.TestCase):
         hook = model.register_forward_pre_hook(
             lambda module, inputs: seen_batches.append(len(inputs[0]))
         )
+
         try:
             prediction = runner.predict(X, batch_size=3)
         finally:
             hook.remove()
+
         self.assertEqual(sum(seen_batches), len(X))
         self.assertLessEqual(max(seen_batches), 3)
         np.testing.assert_allclose(prediction, runner.predict(X, batch_size=7), atol=1e-6)
+
         for invalid in (0, -1, True, 1.5):
             with self.subTest(batch_size=invalid), self.assertRaises(ValueError):
                 runner.predict(X, batch_size=invalid)

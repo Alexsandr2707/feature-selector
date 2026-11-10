@@ -45,12 +45,14 @@ class TargetFilterTests(unittest.TestCase):
         """
         data = weekly_data()
         result = TargetFilter(max_diff=30).transform(data)
+
         expected = np.zeros(28, dtype=bool)
         expected[17:24] = True
         np.testing.assert_array_equal(pd.isna(result.y), expected)
         np.testing.assert_array_equal(
             np.asarray(result.y)[~expected], np.asarray(data.y)[~expected]
         )
+
         unchanged = TargetFilter(max_diff=100).transform(data)
         np.testing.assert_array_equal(unchanged.y, data.y)
 
@@ -62,6 +64,7 @@ class TargetFilterTests(unittest.TestCase):
         """
         data = weekly_data()
         original = data.y.copy()
+
         for targets in (data.y, np.asarray(data.y)):
             with self.subTest(container=type(targets)):
                 result = TargetFilter(max_diff=30).transform(replace(data, y=targets))
@@ -75,10 +78,12 @@ class TargetFilterTests(unittest.TestCase):
                     pd.testing.assert_index_equal(result.y.index, data.X.index)
                     self.assertEqual(result.y.name, "target")
         pd.testing.assert_series_equal(data.y, original)
+
         sparse = np.asarray(data.y).copy()
         sparse[[0, 10, 21]] = np.nan
         result = TargetFilter(max_diff=30).transform(replace(data, y=sparse))
         self.assertTrue(np.isnan(np.asarray(result.y)[[0, 10, 21]]).all())
+
         unlabelled = replace(data, y=None)
         self.assertIs(TargetFilter().transform(unlabelled), unlabelled)
 
@@ -89,11 +94,13 @@ class TargetFilterTests(unittest.TestCase):
             None.
         """
         data = weekly_data()
+
         for positions in (np.arange(0), np.arange(1), np.arange(3)):
             with self.subTest(size=len(positions)):
                 selected = data.select(positions)
                 result = TargetFilter().transform(selected)
                 np.testing.assert_array_equal(result.y, selected.y)
+
         missing = replace(data, y=np.full(28, np.nan))
         result = TargetFilter().transform(missing)
         self.assertTrue(pd.isna(result.y).all())
@@ -107,6 +114,7 @@ class TargetFilterTests(unittest.TestCase):
         data = weekly_data()
         before = AlignTarget(2).transform(TargetFilter(max_diff=30).transform(data))
         after = TargetFilter(max_diff=30).transform(AlignTarget(2).transform(data))
+
         np.testing.assert_allclose(before.y, after.y, equal_nan=True)
         self.assertIs(after.X, data.X)
 
@@ -118,6 +126,7 @@ class TargetFilterTests(unittest.TestCase):
         """
         data = weekly_data()
         result = Windows(3).transform(TargetFilter(max_diff=30).transform(data))
+
         self.assertEqual(len(result.X), 26)
         self.assertEqual(int(pd.isna(result.y).sum()), 7)
         self.assertTrue(np.isfinite(result.X).all())
@@ -129,20 +138,26 @@ class TargetFilterTests(unittest.TestCase):
         Returns:
             None.
         """
-        pipeline = build_pipeline([
-            {"name": "filter", "type": "filter", "params": {"max_diff": 30}},
-            {"name": "windows", "type": "windows", "params": {"lookback": 3}},
-            {"name": "model", "type": "ridge"},
-        ])
+        pipeline = build_pipeline(
+            [
+                {"name": "filter", "type": "filter", "params": {"max_diff": 30}},
+                {"name": "windows", "type": "windows", "params": {"lookback": 3}},
+                {"name": "model", "type": "ridge"},
+            ]
+        )
+
         data = weekly_data()
         cloned = clone(pipeline)
         self.assertIsNot(cloned["filter"], pipeline["filter"])
+
         pipeline.fit(data)
         expected = pipeline.predict(data)
         unlabelled = pipeline.predict(replace(data, y=None))
+
         np.testing.assert_array_equal(expected.values, unlabelled.values)
         self.assertIsNone(unlabelled.truth)
         self.assertEqual(int(pd.isna(expected.truth).sum()), 7)
+
         restored = pickle.loads(pickle.dumps(pipeline))
         np.testing.assert_array_equal(restored.predict(data).values, expected.values)
 
@@ -159,9 +174,14 @@ class TargetFilterTests(unittest.TestCase):
             assert isinstance(data.y, pd.Series)
             data.X.to_csv(root / "features.csv")
             data.y.to_frame().to_csv(root / "targets.csv")
+
             settings = {
-                "data": {"features_path": "features.csv", "target_path": "targets.csv",
-                         "target_column": "target", "freq": "1D"},
+                "data": {
+                    "features_path": "features.csv",
+                    "target_path": "targets.csv",
+                    "target_column": "target",
+                    "freq": "1D",
+                },
                 "split": {"train_fraction": 0.75, "validation_fraction": 0.15},
                 "pipeline": [
                     {"name": "filter", "type": "filter", "params": {"max_diff": 30}},
@@ -173,7 +193,9 @@ class TargetFilterTests(unittest.TestCase):
             }
             path = root / "config.yaml"
             path.write_text(yaml.safe_dump(settings), encoding="utf-8")
+
             run = run_experiment(path)
+
             scaler_step = run.pipeline["target_scaler"]
             assert isinstance(scaler_step, TargetScale)
             assert isinstance(scaler_step.scaler, StandardScaler)
@@ -183,8 +205,10 @@ class TargetFilterTests(unittest.TestCase):
             self.assertEqual(len(run.predictions["validation"]), 4)
             self.assertEqual(int(run.predictions["validation"].y_true.isna().sum()), 3)
             self.assertTrue(np.isfinite(run.predictions["validation"].y_pred).all())
-            self.assertEqual(run.metadata["steps"]["pipeline/filter"]["masked_targets"],
-                             {"train": 4, "validation": 3, "test": 0})
+            self.assertEqual(
+                run.metadata["steps"]["pipeline/filter"]["masked_targets"],
+                {"train": 4, "validation": 3, "test": 0},
+            )
             self.assertFalse(run.metadata["test_evaluated"])
 
     def test_metadata_counts_only_newly_masked_targets(self) -> None:
@@ -197,25 +221,31 @@ class TargetFilterTests(unittest.TestCase):
         targets = np.asarray(data.y).copy()
         targets[21] = np.nan
         data = replace(data, y=targets)
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tracker = RunTracker(root)
             context = StepContext(tracker, operation="transform")
+
             try:
                 context.child("other").log_metadata({"kept": True})
                 result = TargetFilter(max_diff=30).transform(data, context=context.child("filter"))
             finally:
                 tracker.close()
+
             removed = pd.notna(data.y) & pd.isna(result.y)
             expected = {
                 split: int(np.count_nonzero(removed & data.samples["split"].eq(split).to_numpy()))
                 for split in ("train", "validation", "test")
             }
+
             self.assertEqual(sum(expected.values()), 6)
             self.assertEqual(tracker.metadata["pipeline/filter"]["masked_targets"], expected)
             self.assertEqual(tracker.metadata["pipeline/other"], {"kept": True})
-            records = [json.loads(line) for line in
-                       (root / "events.jsonl").read_text().splitlines()]
+
+            records = [
+                json.loads(line) for line in (root / "events.jsonl").read_text().splitlines()
+            ]
             self.assertEqual(records[-1]["event"], "metadata")
             self.assertEqual(records[-1]["path"], "pipeline/filter")
             self.assertEqual(records[-1]["data"]["operation"], "transform")

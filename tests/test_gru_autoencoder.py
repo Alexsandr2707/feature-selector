@@ -43,22 +43,30 @@ class GRUAutoencoderTests(unittest.TestCase):
             with self.subTest(length=length):
                 X = np.random.default_rng(7).normal(size=(7, length, 6)).astype(np.float32)
                 model = GRUAutoencoder(
-                    hidden_channels=4, latent_channels=2, epochs=1,
-                    batch_size=3, prediction_batch_size=2,
+                    hidden_channels=4,
+                    latent_channels=2,
+                    epochs=1,
+                    batch_size=3,
+                    prediction_batch_size=2,
                 ).fit(X)
+
                 Z = model.encode(X)
                 predicted = model.predict(X)
+
                 self.assertEqual(Z.shape, (7, length, 2))
                 self.assertEqual(model.latent_shape_, (length, 2))
                 self.assertEqual(predicted.shape, X.shape)
                 np.testing.assert_allclose(model.decode(Z), predicted, atol=1e-6)
+
                 self.assertEqual(model.encode(X[:0]).shape, (0, length, 2))
                 self.assertEqual(model.decode(Z[:0]).shape, (0, length, 6))
                 self.assertEqual(model.predict(X[:0]).shape, (0, length, 6))
+
                 model.set_params(prediction_batch_size=7)
                 np.testing.assert_allclose(model.encode(X), Z, atol=1e-6)
                 np.testing.assert_allclose(model.predict(X), predicted, atol=1e-6)
                 np.testing.assert_allclose(model.predict(X[::-1]), predicted[::-1], atol=1e-6)
+
                 model.set_params(mode="encode")
                 np.testing.assert_allclose(model.transform(X), Z, atol=1e-6)
                 np.testing.assert_allclose(model.inverse_transform(Z), predicted, atol=1e-6)
@@ -72,18 +80,23 @@ class GRUAutoencoderTests(unittest.TestCase):
         X = np.random.default_rng(3).normal(size=(5, 5, 6)).astype(np.float32)
         model = GRUAutoencoder(batch_size=1, hidden_channels=4, latent_channels=2, epochs=1).fit(X)
         Z = model.encode(X)
+
         changed = X.copy()
         changed[:, -1] += 10
         np.testing.assert_array_equal(model.encode(changed)[:, :-1], Z[:, :-1])
+
         changed = X.copy()
         changed[:, 0] += 10
         self.assertGreater(float(np.max(np.abs(model.encode(changed)[:, 1:] - Z[:, 1:]))), 0)
+
         decoded = model.decode(Z)
         model.encode(changed)
         np.testing.assert_array_equal(model.decode(Z), decoded)
+
         changed_latent = Z.copy()
         changed_latent[:, -1] += 10
         np.testing.assert_array_equal(model.decode(changed_latent)[:, :-1], decoded[:, :-1])
+
         changed_latent = Z.copy()
         changed_latent[:, 0] += 10
         self.assertGreater(
@@ -99,25 +112,35 @@ class GRUAutoencoderTests(unittest.TestCase):
         X = np.ones((7, 5, 3), dtype=np.float32)
         state = torch.get_rng_state().clone()
         model = GRUAutoencoder(
-            hidden_channels=4, latent_channels=2, epochs=30, batch_size=4,
-            scheduler=False, learning_rate=0.03, max_grad_norm=1.0,
+            hidden_channels=4,
+            latent_channels=2,
+            epochs=30,
+            batch_size=4,
+            scheduler=False,
+            learning_rate=0.03,
+            max_grad_norm=1.0,
         ).fit(X)
+
         self.assertTrue(torch.equal(state, torch.get_rng_state()))
         self.assertLess(model.history_[-1]["train_loss"], model.history_[0]["train_loss"])
         self.assertLess(float(np.mean((model.predict(X) - X) ** 2)), 0.1)
         self.assertIsNone(model.best_epoch_)
+
         for epoch in model.history_:
             batches = epoch["batches"]
             self.assertEqual([batch["samples"] for batch in batches], [4])
             expected = sum(batch["train_loss"] * batch["samples"] for batch in batches) / 4
             self.assertAlmostEqual(epoch["train_loss"], expected)
+
         fresh = clone(model)
         self.assertEqual(fresh.get_params(), model.get_params())
         self.assertNotIn("compression", fresh.get_params())
         self.assertFalse(hasattr(fresh, "runner_"))
+
         restored = pickle.loads(pickle.dumps(model))
         np.testing.assert_array_equal(restored.predict(X), model.predict(X))
         np.testing.assert_array_equal(restored.encode(X), model.encode(X))
+
         model.set_params(epochs=1, batch_size=3).fit(np.ones((3, 2, 5), dtype=np.float32))
         self.assertEqual(model.window_shape_, (2, 5))
         self.assertEqual(model.latent_shape_, (2, 2))
@@ -130,11 +153,14 @@ class GRUAutoencoderTests(unittest.TestCase):
         """
         X = np.random.default_rng(9).normal(size=(7, 5, 3)).astype(np.float32)
         params = dict(hidden_channels=4, latent_channels=2, epochs=1, batch_size=4)
+
         plain = GRUAutoencoder(**params).fit(X)
         validation = -2 * X[:3]
         model = GRUAutoencoder(**params).fit(X, validation_data=validation)
+
         np.testing.assert_array_equal(model.predict(X), plain.predict(X))
         self.assertEqual(model.best_epoch_, 1)
+
         expected = float(np.mean((model.predict(validation) - validation) ** 2))
         self.assertAlmostEqual(model.history_[0]["validation_loss"], expected, places=5)
 
@@ -150,32 +176,48 @@ class GRUAutoencoderTests(unittest.TestCase):
             reconstruction = deepcopy(forecast)
             reconstruction["data"] = {"features_path": forecast["data"]["features_path"]}
             reconstruction["pipeline"] = [
-                forecast["pipeline"][0], forecast["pipeline"][2],
-                {"name": "ae", "type": "gru_autoencoder", "params": {
-                    "hidden_channels": 3, "latent_channels": 1, "epochs": 1, "batch_size": 8}},
+                forecast["pipeline"][0],
+                forecast["pipeline"][2],
+                {
+                    "name": "ae",
+                    "type": "gru_autoencoder",
+                    "params": {
+                        "hidden_channels": 3,
+                        "latent_channels": 1,
+                        "epochs": 1,
+                        "batch_size": 8,
+                    },
+                },
             ]
             config_path = root / "reconstruction.yaml"
             config_path.write_text(yaml.safe_dump(reconstruction), encoding="utf-8")
+
             pretrained = run_experiment(load_config(config_path))
             self.assertIsInstance(pretrained.model, GRUAutoencoder)
             self.assertEqual(pretrained.model.latent_shape_, (5, 1))
-            self.assertEqual(
-                sum(b["samples"] for b in pretrained.model.history_[0]["batches"]), 32
-            )
+            self.assertEqual(sum(b["samples"] for b in pretrained.model.history_[0]["batches"]), 32)
+
             path = pretrained.pipeline.export_transform(
                 root / "gru_encoder.pkl", through="ae", mode="encode"
             )
+
             forecast["pipeline"] = [
                 forecast["pipeline"][1],
                 {"name": "encoder", "type": "frozen_pipeline", "params": {"path": str(path)}},
                 forecast["pipeline"][3],
-                {"name": "gru", "type": "gru", "params": {
-                    "epochs": 1, "hidden_size": 2, "batch_size": 1}},
+                {
+                    "name": "gru",
+                    "type": "gru",
+                    "params": {"epochs": 1, "hidden_size": 2, "batch_size": 1},
+                },
             ]
+
             with patch.object(GRUAutoencoder, "fit", side_effect=AssertionError("refit")):
                 run = run_experiment(forecast)
+
             self.assertEqual(run.model.window_shape_, (5, 1))
             self.assertEqual(sum(b["samples"] for b in run.model.history_[0]["batches"]), 7)
+
             path.unlink()
             restored = load_run(run.artifact_dir)
             data = load_data(**forecast["data"])

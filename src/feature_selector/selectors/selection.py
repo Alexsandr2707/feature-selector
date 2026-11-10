@@ -56,6 +56,7 @@ class _Selector(TransformerMixin, BaseEstimator):
         self._validate_input(X)
         if len(X) == 0:
             raise ValueError("Training features must be nonempty")
+
         self.n_features_in_ = X.shape[1]
         self._input_columns_ = X.columns.copy() if isinstance(X, pd.DataFrame) else None
 
@@ -386,10 +387,13 @@ class ElasticNetSelector(_Selector):
         values, target = self._training_pairs(X, y)
         if self.top_k is not None and self.top_k > self.n_features_in_:
             raise ValueError("top_k must be an integer between 1 and n_features")
+
         self.model_ = self._make_model()
         self.model_.fit(values, target)
+
         importance = np.abs(self.model_.coef_)
         selected = self._selection_mask(importance)
+
         self.importances_ = importance
         self._set_selection(np.flatnonzero(selected))
         return self
@@ -454,8 +458,10 @@ class PLSSelector(_Selector):
         feature_std[feature_std == 0] = 1
         standardized = (values - values.mean(axis=0)) / feature_std
         target_std = target.std(ddof=1) or 1.0
+
         contributions = pls.x_rotations_ @ pls.y_loadings_.T
         predictions = standardized * contributions[:, 0] * target_std + target.mean()
+
         residual = ((target[:, None] - predictions) ** 2).sum(axis=0)
         total = ((target - target.mean()) ** 2).sum()
         scores = 1 - residual / total
@@ -482,6 +488,7 @@ class PLSSelector(_Selector):
         """
         if depth == 0 or len(columns) == 1 or np.std(target) == 0:
             return [columns]
+
         pls = self._fit_pls(values[:, columns], target)
         first_weights = np.abs(pls.x_weights_[:, 0])
         second_weights = np.abs(pls.x_weights_[:, 1])
@@ -489,6 +496,7 @@ class PLSSelector(_Selector):
         if not left.any() or left.all():
             # Degenerate weights still produce two nonempty, deterministic children.
             left = np.arange(len(columns)) < (len(columns) + 1) // 2
+
         return self._partition(values, target, columns[left], depth - 1) + self._partition(
             values, target, columns[~left], depth - 1
         )
@@ -514,6 +522,7 @@ class PLSSelector(_Selector):
         self.cluster_indices_ = [columns.copy() for columns in clusters]
         names = self._output_names()
         self.clusters_ = [list(names[columns]) for columns in clusters]
+
         chosen = [columns[self._representative(values[:, columns], target)] for columns in clusters]
         self._set_selection(np.asarray(chosen, dtype=np.intp))
         return self

@@ -32,6 +32,11 @@ line-length = 100
 
 [dependency-groups]
 dev = [
+    "fastapi>=0.162.2",
+    "httpx>=0.28.1",
     "ipykernel>=7.4.0",
     "nbstripout>=0.9.1",
+    "plotly>=7.1.0",
+    "streamlit>=1.67.0",
+    "uvicorn>=0.54.0",
 ]

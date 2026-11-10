@@ -1,0 +1,28 @@
+host: 0.0.0.0
+port: 8000
+state_dir: /state
+storage_url: http://storage:8000/api/v1
+timeout: 120
+templates:
+  uzk_ridge:
+    name: UZK / Ridge
+    source_id: uzk
+    config_path: configs/uzk/ridge.yaml
+    parameters:
+      run_seed: 0
+      horizon: 1
+      lookback: 12
+      alpha: 10.0
+  uzk_gru:
+    name: UZK / GRU
+    source_id: uzk
+    config_path: configs/uzk/gru.yaml
+    parameters:
+      run_seed: 0
+      model_seed: 0
+      horizon: 1
+      lookback: 48
+      epochs: 5
+      batch_size: 32
+      hidden_size: 16
+      learning_rate: 0.01

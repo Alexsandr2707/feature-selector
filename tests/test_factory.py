@@ -25,7 +25,10 @@ class Offset(Step):
         self.amount = amount
 
     def transform(
-        self, data: PipelineData, *, context: StepContext | None = None,
+        self,
+        data: PipelineData,
+        *,
+        context: StepContext | None = None,
     ) -> PipelineData:
         """Shift features without changing alignment.
 
@@ -48,11 +51,17 @@ class FactoryTests(unittest.TestCase):
         """
         register_step("test_offset", Offset)
         self.addCleanup(STEP_REGISTRY.pop, "test_offset")
-        pipeline = build_pipeline([{"name": "offset", "type": "test_offset",
-                                    "params": {"amount": 4}},
-                                   {"name": "model", "type": "ridge"}])
+
+        pipeline = build_pipeline(
+            [
+                {"name": "offset", "type": "test_offset", "params": {"amount": 4}},
+                {"name": "model", "type": "ridge"},
+            ]
+        )
+
         cloned = clone(pipeline)
         self.assertIsNot(cloned["offset"], pipeline["offset"])
+
         data = sample_data()
         pipeline.fit(data)
         self.assertEqual(pipeline.transform(data, through="offset").X.iloc[0, 0], 4)
@@ -74,11 +83,17 @@ class FactoryTests(unittest.TestCase):
         Returns:
             None.
         """
-        pipeline = build_pipeline([{"name": "first", "type": "windows", "params": {"lookback": 3}},
-                                   {"name": "second", "type": "windows"},
-                                   {"name": "model", "type": "ridge"}])
+        pipeline = build_pipeline(
+            [
+                {"name": "first", "type": "windows", "params": {"lookback": 3}},
+                {"name": "second", "type": "windows"},
+                {"name": "model", "type": "ridge"},
+            ]
+        )
+
         with self.assertRaises(ValueError) as caught:
             pipeline.fit(sample_data())
         self.assertIn("pipeline/second", " ".join(caught.exception.__notes__))
+
         with self.assertRaises(ValueError):
             build_pipeline([{"name": "scale", "type": "standard"}])

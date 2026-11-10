@@ -34,7 +34,9 @@ class ExperimentTests(unittest.TestCase):
             spec = write_config(root, sparse=True)
             spec["run"]["experiment_name"] = "ridge_training"
             before = deepcopy(spec)
+
             run = run_experiment(spec)
+
             self.assertEqual(run.artifact_dir.parent, root / "runs" / "ridge_training")
             self.assertRegex(run.artifact_dir.name, r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?$")
             self.assertEqual(spec, before)
@@ -42,11 +44,13 @@ class ExperimentTests(unittest.TestCase):
             self.assertNotIn("test", run.predictions)
             self.assertFalse(run.metadata["test_evaluated"])
             self.assertTrue(run.predictions["validation"].y_true.isna().any())
+
             source = load_data(**spec["data"])
             expected = run.predict(source, "test")
             loaded = load_run(run.artifact_dir)
             np.testing.assert_array_equal(expected.y_pred, loaded.predict(source, "test").y_pred)
             self.assertLess(run.metrics["validation"]["mae"], 3)
+
             for name in ("events.jsonl", "metadata.json", "config.yaml", "history.json", "run.pkl"):
                 self.assertTrue((run.artifact_dir / name).is_file())
 
@@ -60,6 +64,7 @@ class ExperimentTests(unittest.TestCase):
             spec = write_config(Path(directory))
             run = run_experiment(spec)
             self.assertEqual(run.artifact_dir.parent, Path(directory) / "runs" / "default")
+
             report = run.predict(load_features(spec["data"]["features_path"]), "test")
             self.assertTrue(report.y_true.isna().all())
             self.assertTrue(np.isfinite(report.y_pred).all())
@@ -74,6 +79,7 @@ class ExperimentTests(unittest.TestCase):
             spec = write_config(Path(directory))
             original = WindowRidge.predict
             shapes = []
+
             def observe(model: WindowRidge, values: np.ndarray) -> np.ndarray:
                 """Record prediction count before delegation.
 
@@ -86,8 +92,10 @@ class ExperimentTests(unittest.TestCase):
                 """
                 shapes.append(len(values))
                 return original(model, values)
+
             with patch.object(WindowRidge, "predict", observe):
                 run = run_experiment(spec)
+
             self.assertEqual(shapes, [43])
             self.assertEqual(sum(len(frame) for frame in run.predictions.values()), 43)
 
@@ -100,7 +108,9 @@ class ExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             spec = write_config(Path(directory))
             spec["split"] = {"train_fraction": 1, "validation_fraction": 0}
+
             run = run_experiment(spec)
+
             self.assertEqual(set(run.metrics), {"train"})
             self.assertEqual(set(run.predictions), {"train"})
 
@@ -114,12 +124,15 @@ class ExperimentTests(unittest.TestCase):
             root = Path(directory)
             spec = write_config(root)
             spec["pipeline"][-1]["params"] = {"alpha": -2}
+
             with self.assertRaises(ValueError) as caught:
                 run_experiment(spec)
+
             self.assertIn("pipeline/model", " ".join(caught.exception.__notes__))
             run_dir = next((root / "runs" / "default").iterdir())
             self.assertTrue((run_dir / "failure.json").is_file())
             self.assertIn("Traceback", (run_dir / "run.log").read_text())
+
             lines = (run_dir / "events.jsonl").read_text().splitlines()
             events = [json.loads(line) for line in lines]
             self.assertEqual(events[-1]["event"], "run_failed")
@@ -137,8 +150,13 @@ class ExperimentTests(unittest.TestCase):
             spec = write_config(root)
             path = root / "config.yaml"
             path.write_text(yaml.safe_dump(spec))
-            result = subprocess.run([sys.executable, "-m", "feature_selector", "run", str(path)],
-                                    capture_output=True, text=True)
+
+            result = subprocess.run(
+                [sys.executable, "-m", "feature_selector", "run", str(path)],
+                capture_output=True,
+                text=True,
+            )
+
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("validation", json.loads(result.stdout)["metrics"])
 
@@ -154,14 +172,18 @@ class ExperimentTests(unittest.TestCase):
             spec["pipeline"][2] = ("windows", Windows(5))
             spec["pipeline"][3] = ("target_scaler", TargetScale(StandardScaler()))
             spec["pipeline"][4] = ("model", ModelStep(WindowRidge(alpha=3)))
+
             first = run_experiment(spec)
+
             config = load_config(first.artifact_dir / "config.yaml")
             repeated = run_experiment(config)
+
             self.assertEqual(repeated.pipeline["windows"].lookback, 5)
             self.assertEqual(repeated.model.alpha, 3)
             for split in ("train", "validation"):
-                np.testing.assert_array_equal(first.predictions[split].y_pred,
-                                              repeated.predictions[split].y_pred)
+                np.testing.assert_array_equal(
+                    first.predictions[split].y_pred, repeated.predictions[split].y_pred
+                )
 
     def test_nonfinite_prediction_fails_the_run(self) -> None:
         """Persist a failure instead of accepting a model with invalid predictions.
@@ -172,9 +194,11 @@ class ExperimentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             spec = write_config(root)
+
             with patch.object(WindowRidge, "predict", return_value=np.full(43, np.nan)):
                 with self.assertRaisesRegex(ValueError, "finite"):
                     run_experiment(spec)
+
             run_dir = next((root / "runs" / "default").iterdir())
             self.assertTrue((run_dir / "failure.json").is_file())
             self.assertFalse((run_dir / "run.pkl").exists())

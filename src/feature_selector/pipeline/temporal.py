@@ -46,20 +46,25 @@ class ExcludeIntervals(Step):
             start, end = pd.Timestamp(start), pd.Timestamp(end)
             if start > end:
                 raise ValueError("Excluded interval requires start <= end")
+
             history = (samples["history_start"] <= end) & (samples["history_end"] >= start)
             target = samples["target_time"].between(start, end)
             input_mask |= history.to_numpy()
             mask |= (history | target).to_numpy()
+
         samples["excluded"] = mask
         samples["input_excluded"] = input_mask
+
         X = data.X.astype(float).copy()
         if isinstance(X, pd.DataFrame):
             X.iloc[input_mask] = np.nan
         else:
             X[input_mask] = np.nan
+
         y = None if data.y is None else np.array(data.y, dtype=float, copy=True)
         if y is not None:
             y[mask] = np.nan
+
         if context:
             context.log_metadata(
                 {
@@ -103,16 +108,19 @@ class AlignTarget(Step):
         """
         if self.horizon < 0 or not isinstance(data.X, pd.DataFrame):
             raise ValueError("align_target requires rows and a nonnegative horizon")
+
         samples = data.samples.copy()
         samples["target_time"] = samples["target_time"] + self.horizon * data.temporal.frequency
         target_times = pd.DatetimeIndex(samples["target_time"])
         samples["split"] = data.temporal.boundaries.labels(target_times)
+
         future_excluded = (
             pd.Series(samples["input_excluded"].to_numpy())
             .shift(-self.horizon, fill_value=False)
             .to_numpy(dtype=bool)
         )
         samples["excluded"] |= future_excluded
+
         y = (
             None
             if data.y is None
@@ -160,6 +168,7 @@ class TemporalPool(Step):
         samples, timesteps, features = data.X.shape
         if timesteps < 1 or timesteps % self.factor:
             raise ValueError("temporal_pool requires positive window length divisible by factor")
+
         # Pool inside each window; the original grid still defines forecast timestamps.
         grouped = data.X.reshape(samples, timesteps // self.factor, self.factor, features)
         return replace(data, X=grouped.mean(axis=2))
@@ -203,6 +212,7 @@ class Windows(Step):
 
         if len(times) > 1 and not regular.all():
             raise ValueError("windows requires a regular uncompressed grid")
+
         values = data.X.to_numpy(dtype=float)
         excluded = data.samples["excluded"].to_numpy(dtype=bool)
         input_excluded = data.samples["input_excluded"].to_numpy(dtype=bool)
@@ -210,6 +220,7 @@ class Windows(Step):
         missing = ~np.isfinite(values).all(axis=1)
         positions: list[int] = []
         diagnostics: dict[str, dict[str, int]] = {}
+
         for position in range(len(values)):
             split = str(data.samples.iloc[position]["split"])
             counts = diagnostics.setdefault(
@@ -233,6 +244,7 @@ class Windows(Step):
             else:
                 counts["accepted"] += 1
                 positions.append(position)
+
         indices = np.asarray(positions, dtype=np.intp)
         selected = data.select(indices)
         X = (
@@ -240,9 +252,11 @@ class Windows(Step):
             if positions
             else (np.empty((0, self.lookback, values.shape[1])))
         )
+
         samples = selected.samples.copy()
         samples["history_start"] = times[indices - self.lookback + 1]
         samples["history_end"] = times[indices]
+
         if context:
             context.log_metadata({"windows": diagnostics})
         return replace(selected, X=X, samples=samples)

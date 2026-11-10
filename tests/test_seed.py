@@ -37,10 +37,12 @@ class RunSeedTests(unittest.TestCase):
         python_value = random.random()
         numpy_values = np.random.random(4)
         torch_values = torch.rand(4)
+
         _set_global_seed(42)
         self.assertEqual(random.random(), python_value)
         np.testing.assert_array_equal(np.random.random(4), numpy_values)
         torch.testing.assert_close(torch.rand(4), torch_values, rtol=0, atol=0)
+
         _set_global_seed(43)
         self.assertNotEqual(random.random(), python_value)
         self.assertFalse(np.array_equal(np.random.random(4), numpy_values))
@@ -68,16 +70,19 @@ class RunSeedTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             settings = write_config(Path(directory))
+
             for seed in (0, 17, 42):
                 with self.subTest(seed=seed):
                     if seed:
                         settings["run"]["seed"] = seed
+
                     with (
                         patch("feature_selector.experiment.load_data", side_effect=observe_load),
                         patch("feature_selector.experiment.torch.cuda.manual_seed") as cuda_seed,
                         patch("feature_selector.experiment.torch.cuda.manual_seed_all") as cuda_all,
                     ):
                         run = run_experiment(settings)
+
                     expected = (
                         random.Random(seed).random(),
                         float(np.random.RandomState(seed).random()),

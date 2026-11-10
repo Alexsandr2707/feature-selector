@@ -10,7 +10,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-
 class ConvAutoencoderTests(unittest.TestCase):
     """Exercise reconstruction, transformer integration and estimator lifecycle."""
 
@@ -71,19 +70,23 @@ class ConvAutoencoderTests(unittest.TestCase):
                     prediction_batch_size=2,
                 )
                 self.assertIs(model.fit(X), model)
+
                 encoded = model.encode(X)
                 self.assertEqual(encoded.shape, (5, (length + 1) // 2, 2))
+
                 prediction = model.predict(X)
                 self.assertEqual(prediction.shape, X.shape)
                 self.assertEqual(prediction.dtype, np.float32)
                 np.testing.assert_allclose(model.decode(encoded), prediction, atol=1e-6)
                 np.testing.assert_array_equal(model.transform(X), prediction)
+
                 model.set_params(mode="encode")
                 np.testing.assert_array_equal(model.transform(X), encoded)
                 np.testing.assert_array_equal(model.predict(X), encoded)
                 np.testing.assert_array_equal(
                     model.inverse_transform(encoded), model.decode(encoded)
                 )
+
                 np.testing.assert_array_equal(X, before)
                 self.assertEqual(model.n_features_in_, 3)
 
@@ -115,10 +118,12 @@ class ConvAutoencoderTests(unittest.TestCase):
         self.assertTrue(all(epoch["validation_loss"] is None for epoch in model.history_))
         self.assertLess(model.history_[-1]["train_loss"], model.history_[0]["train_loss"])
         self.assertLess(float(np.mean((model.predict(X) - X) ** 2)), 0.1)
+
         for epoch in model.history_:
             self.assertEqual([batch["samples"] for batch in epoch["batches"]], [3])
             expected = sum(b["train_loss"] * b["samples"] for b in epoch["batches"]) / 3
             self.assertAlmostEqual(epoch["train_loss"], expected)
+
         json.dumps(model.history_, allow_nan=False)
 
     def test_validation_selects_checkpoint_without_updating_weights(self) -> None:
@@ -132,10 +137,13 @@ class ConvAutoencoderTests(unittest.TestCase):
         X = self._windows()
         validation = -2 * X
         params = dict(hidden_channels=4, latent_channels=2, epochs=1, batch_size=3)
+
         plain = ConvAutoencoder(**params).fit(X)
         model = ConvAutoencoder(**params).fit(X, validation_data=validation)
+
         self.assertEqual(model.best_epoch_, 1)
         np.testing.assert_array_equal(model.predict(X), plain.predict(X))
+
         expected = float(np.mean((model.predict(validation) - validation) ** 2))
         self.assertAlmostEqual(model.history_[0]["validation_loss"], expected, places=5)
 
@@ -148,6 +156,7 @@ class ConvAutoencoderTests(unittest.TestCase):
             min_lr=0,
             patience=1,
         ).fit(X, validation_data=validation)
+
         self.assertEqual(len(stopped.history_), 2)
         self.assertEqual(stopped.best_epoch_, 1)
 
@@ -168,11 +177,14 @@ class ConvAutoencoderTests(unittest.TestCase):
         y = X[:, -1, 0]
         encoder = ConvAutoencoder(batch_size=1, hidden_channels=4, latent_channels=2, epochs=1)
         pipeline = Pipeline([("encoder", encoder), ("model", WindowRidge())])
+
         pipeline.fit(X, y)
         self.assertEqual(pipeline.predict(X).shape, (5,))
+
         restored = pickle.loads(pickle.dumps(pipeline))
         np.testing.assert_array_equal(restored.predict(X), pipeline.predict(X))
         np.testing.assert_array_equal(restored["encoder"].predict(X), encoder.predict(X))
+
         fresh = clone(encoder)
         self.assertEqual(fresh.get_params(), encoder.get_params())
         self.assertFalse(hasattr(fresh, "runner_"))
@@ -192,9 +204,9 @@ class ConvAutoencoderTests(unittest.TestCase):
 
         X = self._windows()
         model = ConvAutoencoder(
-            batch_size=1,
-            hidden_channels=4, latent_channels=2, epochs=1, prediction_batch_size=2
+            batch_size=1, hidden_channels=4, latent_channels=2, epochs=1, prediction_batch_size=2
         ).fit(X)
+
         for method, module, values in (
             (model.predict, model.network_.encoder, X),
             (model.encode, model.network_.encoder, X),
@@ -204,14 +216,18 @@ class ConvAutoencoderTests(unittest.TestCase):
             hook = module.register_forward_pre_hook(
                 lambda module, inputs: batches.append(len(inputs[0]))
             )
+
             try:
                 result = method(values)
             finally:
                 hook.remove()
+
             self.assertEqual(batches, [2, 2, 1])
+
             model.set_params(prediction_batch_size=5)
             np.testing.assert_allclose(method(values), result, atol=1e-6)
             model.set_params(prediction_batch_size=2)
+
         self.assertEqual(model.encode(X[:0]).shape, (0, 3, 2))
         self.assertEqual(model.predict(X[:0]).shape, (0, 5, 3))
         self.assertEqual(model.decode(np.empty((0, 3, 2))).shape, (0, 5, 3))
@@ -222,6 +238,7 @@ class ConvAutoencoderTests(unittest.TestCase):
                 for parameter in model.network_.parameters()
             )
         )
+
         with torch.no_grad():
             expected = model.network_(torch.as_tensor(X)).numpy()
         np.testing.assert_allclose(model.predict(X), expected, atol=1e-6)
@@ -236,8 +253,10 @@ class ConvAutoencoderTests(unittest.TestCase):
 
         model = ConvAutoencoder(batch_size=1, learning_rate=-1, epochs=1)
         self.assertEqual(model.learning_rate, -1)
+
         with self.assertRaises(ValueError):
             model.fit(self._windows())
+
         with self.assertRaises(ValueError):
             ConvAutoencoder(batch_size=1, epochs=0).fit(self._windows())
 
@@ -269,12 +288,14 @@ class ConvAutoencoderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             model.fit(X, validation_data=X[:, :2])
         self.assertFalse(hasattr(model, "runner_"))
+
         model.fit(X)
         for values in (X[:, :2], X[:, :, :2], np.full_like(X, np.nan)):
             with self.assertRaises(ValueError):
                 model.predict(values)
         with self.assertRaises(ValueError):
             model.decode(X)
+
         model.fit(np.ones((4, 6, 1)))
         self.assertEqual(model.window_shape_, (6, 1))
         self.assertEqual(model.latent_shape_, (3, 2))
@@ -292,8 +313,10 @@ class ConvAutoencoderTests(unittest.TestCase):
 
         X = self._windows()[:, ::-1]
         X.flags.writeable = False
+
         model = ConvAutoencoder(batch_size=1, hidden_channels=4, latent_channels=2, epochs=1).fit(X)
         self.assertEqual(model.predict(X).shape, X.shape)
+
         result = subprocess.run(
             [
                 sys.executable,
@@ -305,4 +328,5 @@ class ConvAutoencoderTests(unittest.TestCase):
             text=True,
             check=False,
         )
+
         self.assertEqual(result.returncode, 0, result.stderr)

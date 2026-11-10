@@ -88,6 +88,7 @@ def create_run_dir(output_dir: str | Path) -> Path:
     parent.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     attempt = 1
+
     while True:
         name = stamp if attempt == 1 else f"{stamp}_{attempt}"
         directory = parent / name
@@ -116,6 +117,7 @@ def input_metadata(config: ExperimentConfig) -> dict[str, Any]:
         with path.open("rb") as stream:
             checksum = hashlib.file_digest(stream, "sha256").hexdigest()
         files[key] = {"path": str(path), "sha256": checksum}
+
     packages = (
         "feature-selector",
         "numpy",
@@ -179,6 +181,7 @@ def save_run(run: ExperimentRun) -> None:
     ]
     config_yaml = yaml.safe_dump(serializable(settings), sort_keys=False, allow_unicode=True)
     (directory / "config.yaml").write_text(config_yaml, encoding="utf-8")
+
     write_json(directory / "metadata.json", run.metadata)
     write_json(directory / "metrics.json", run.metrics)
     write_json(directory / "features.json", run.feature_names)

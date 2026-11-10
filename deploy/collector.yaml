@@ -1,0 +1,10 @@
+host: 0.0.0.0
+port: 8000
+state_dir: /state
+max_batch_size: 2000
+sources:
+  uzk:
+    features_path: /sources/uzk/uzk.csv
+    target_path: /sources/uzk/uzk_lab.csv
+    target_column: UZK.Q.81AY00108.FINALPOINT
+    freq: 1h
